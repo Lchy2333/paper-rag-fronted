@@ -1,9 +1,108 @@
+/* ============================================================
+   主题设计令牌：浅色 / 暗色
+   通过 <html class="dark"> 切换；Element Plus 暗色由
+   element-plus/theme-chalk/dark/css-vars.css 配合 .dark 生效
+   ============================================================ */
 :root {
+  color-scheme: light;
+
+  /* 品牌色 & Element Plus 主色（保持一致） */
   --prf-primary: #4f6ef7;
-  --prf-bg: #f5f6fa;
-  --prf-border: #e4e7ed;
+  --prf-primary-strong: #3b5bf0;
+  --prf-primary-soft: rgba(79, 110, 247, 0.12);
+  --prf-primary-gradient: linear-gradient(135deg, #4f6ef7 0%, #7b5cf0 100%);
+  --el-color-primary: #4f6ef7;
+  --el-color-primary-light-3: #849af9;
+  --el-color-primary-light-5: #a7b7fb;
+  --el-color-primary-light-7: #cad4fd;
+  --el-color-primary-light-8: #dce2fd;
+  --el-color-primary-light-9: #edf1fe;
+  --el-color-primary-dark-2: #3f58c6;
+
+  /* 语义色 */
+  --prf-danger: #f56c6c;
+  --prf-danger-bg: #fef0f0;
+  --prf-danger-border: #fde2e2;
+  --prf-success: #67c23a;
+  --prf-warning-bg: #fdf6ec;
+  --prf-warning-border: #f3d19e;
+
+  /* 背景 / 表面 */
+  --prf-bg: #f4f5f9;
+  --prf-surface: #ffffff;
+  --prf-surface-2: #f7f8fa;
+  --prf-hover: #eef0f4;
+  --prf-active: rgba(79, 110, 247, 0.1);
+
+  /* 边框 */
+  --prf-border: #e6e8ee;
+  --prf-border-strong: #d8dbe3;
+
+  /* 文本 */
+  --prf-text-1: #1f2329;
+  --prf-text-2: #4e5969;
+  --prf-text-3: #86909c;
+  --prf-text-4: #c0c4cc;
+
+  /* 阴影 */
+  --prf-shadow-sm: 0 1px 2px rgba(31, 35, 41, 0.04);
+  --prf-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
+  --prf-shadow-lg: 0 8px 28px rgba(31, 35, 41, 0.1);
+
+  /* 其他 */
+  --prf-code-bg: #f6f8fa;
+  --prf-code-text: #d56167;
+  --prf-scrollbar: #c9cdd6;
+  --prf-scrollbar-hover: #a9aeb8;
 }
 
+html.dark {
+  color-scheme: dark;
+
+  --prf-primary: #6c86ff;
+  --prf-primary-strong: #5271f7;
+  --prf-primary-soft: rgba(108, 134, 255, 0.16);
+  --prf-primary-gradient: linear-gradient(135deg, #6c86ff 0%, #9a6cff 100%);
+  --el-color-primary: #6c86ff;
+  --el-color-primary-light-3: #5d6fd6;
+  --el-color-primary-light-5: #4d5a9e;
+  --el-color-primary-light-7: #3d4669;
+  --el-color-primary-light-8: #343b51;
+  --el-color-primary-light-9: #2c3142;
+  --el-color-primary-dark-2: #566bcc;
+
+  --prf-danger-bg: #3a1f24;
+  --prf-danger-border: #5a2c34;
+  --prf-warning-bg: #3a3018;
+  --prf-warning-border: #5a4a1e;
+
+  --prf-bg: #0e1117;
+  --prf-surface: #171c26;
+  --prf-surface-2: #1e2530;
+  --prf-hover: #212936;
+  --prf-active: rgba(108, 134, 255, 0.16);
+
+  --prf-border: #262d3a;
+  --prf-border-strong: #323b4c;
+
+  --prf-text-1: #e8eaf0;
+  --prf-text-2: #c3c9d4;
+  --prf-text-3: #8b93a3;
+  --prf-text-4: #5b6373;
+
+  --prf-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --prf-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --prf-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
+
+  --prf-code-bg: #0d1117;
+  --prf-code-text: #f0a1a8;
+  --prf-scrollbar: #363e4d;
+  --prf-scrollbar-hover: #444e60;
+}
+
+/* ============================================================
+   基础
+   ============================================================ */
 * {
   box-sizing: border-box;
 }
@@ -26,22 +125,106 @@ body {
     Roboto,
     sans-serif;
   background: var(--prf-bg);
-  color: #303133;
+  color: var(--prf-text-1);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* 滚动条美化 */
+::selection {
+  background: var(--prf-primary-soft);
+}
+
+/* 主题切换时主要表面平滑过渡 */
+.main-header,
+.session-panel,
+.session-item,
+.msg-bubble,
+.msg-avatar,
+.input-bar,
+.docs-card,
+.approval-card,
+.approval-args,
+.markdown-body pre,
+.markdown-body blockquote,
+.markdown-body code,
+.markdown-body th,
+.sample-tag {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+/* 滚动条美化（跟随主题变量） */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c9cdd6;
+  background: var(--prf-scrollbar);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #a9aeb8;
+  background: var(--prf-scrollbar-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ============================================================
+   highlight.js 暗色配色（跟随 .dark，覆盖浅色 github 主题）
+   ============================================================ */
+html.dark .hljs {
+  color: #c9d1d9;
+}
+html.dark .hljs-comment,
+html.dark .hljs-quote,
+html.dark .hljs-code {
+  color: #8b949e;
+}
+html.dark .hljs-keyword,
+html.dark .hljs-selector-tag,
+html.dark .hljs-addition,
+html.dark .hljs-doctag,
+html.dark .hljs-meta .hljs-keyword {
+  color: #ff7b72;
+}
+html.dark .hljs-string,
+html.dark .hljs-attribute,
+html.dark .hljs-meta .hljs-string,
+html.dark .hljs-regexp,
+html.dark .hljs-subst {
+  color: #a5d6ff;
+}
+html.dark .hljs-number,
+html.dark .hljs-literal,
+html.dark .hljs-variable,
+html.dark .hljs-template-variable,
+html.dark .hljs-meta,
+html.dark .hljs-symbol,
+html.dark .hljs-bullet {
+  color: #79c0ff;
+}
+html.dark .hljs-title,
+html.dark .hljs-section,
+html.dark .hljs-name,
+html.dark .hljs-selector-id,
+html.dark .hljs-selector-class {
+  color: #d2a8ff;
+}
+html.dark .hljs-built_in,
+html.dark .hljs-type,
+html.dark .hljs-class .hljs-title {
+  color: #ffa657;
+}
+html.dark .hljs-attr,
+html.dark .hljs-params,
+html.dark .hljs-operator {
+  color: #c9d1d9;
+}
+html.dark .hljs-tag,
+html.dark .hljs-tag .hljs-name,
+html.dark .hljs-title.function_ {
+  color: #7ee787;
 }
