@@ -1,25 +1,43 @@
 /* ============================================================
-   主题设计令牌：浅色 / 暗色
-   通过 <html class="dark"> 切换；Element Plus 暗色由
-   element-plus/theme-chalk/dark/css-vars.css 配合 .dark 生效
+   主题设计令牌
+   - 模式（浅/深）：<html class="dark">
+   - 强调色：<html data-accent="purple|blue|green|orange|rose">
+   - Element Plus 暗色由 element-plus/theme-chalk/dark/css-vars.css 配合 .dark
+   每个强调色都定义整套页面配色（背景/表面/边框/代码），
+   并通过 --prf-* 映射到 Element Plus 的 --el-* 变量，让组件跟随主题。
    ============================================================ */
+
+/* ========== 浅色模式基础（默认强调色：紫色） ========== */
 :root {
   color-scheme: light;
 
-  /* 品牌色 & Element Plus 主色（保持一致） */
+  /* --- 强调色：紫色 --- */
   --prf-primary: #4f6ef7;
-  --prf-primary-strong: #3b5bf0;
-  --prf-primary-soft: rgba(79, 110, 247, 0.12);
-  --prf-primary-gradient: linear-gradient(135deg, #4f6ef7 0%, #7b5cf0 100%);
-  --el-color-primary: #4f6ef7;
-  --el-color-primary-light-3: #849af9;
-  --el-color-primary-light-5: #a7b7fb;
-  --el-color-primary-light-7: #cad4fd;
-  --el-color-primary-light-8: #dce2fd;
-  --el-color-primary-light-9: #edf1fe;
-  --el-color-primary-dark-2: #3f58c6;
+  --prf-primary-2: #7b5cf0;
+  /* 派生色（随 --prf-primary 自动变化） */
+  --prf-primary-strong: color-mix(in srgb, var(--prf-primary) 85%, #000);
+  --prf-primary-soft: color-mix(in srgb, var(--prf-primary) 12%, transparent);
+  --prf-primary-gradient: linear-gradient(135deg, var(--prf-primary) 0%, var(--prf-primary-2) 100%);
+  --prf-active: color-mix(in srgb, var(--prf-primary) 10%, transparent);
+  --el-color-primary: var(--prf-primary);
+  --el-color-primary-light-3: color-mix(in srgb, var(--prf-primary) 70%, #fff);
+  --el-color-primary-light-5: color-mix(in srgb, var(--prf-primary) 50%, #fff);
+  --el-color-primary-light-7: color-mix(in srgb, var(--prf-primary) 30%, #fff);
+  --el-color-primary-light-8: color-mix(in srgb, var(--prf-primary) 20%, #fff);
+  --el-color-primary-light-9: color-mix(in srgb, var(--prf-primary) 10%, #fff);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--prf-primary) 80%, #000);
 
-  /* 语义色 */
+  /* --- 紫色页面着色：背景 / 表面 / 边框 / 代码 --- */
+  --prf-bg: #f5f4fb;
+  --prf-surface: #ffffff;
+  --prf-surface-2: #f6f5fc;
+  --prf-hover: #eef1fb;
+  --prf-border: #e6e6f2;
+  --prf-border-strong: #d6d7ea;
+  --prf-code-bg: #f6f7fd;
+  --prf-code-text: #6d5bd0;
+
+  /* --- 语义色（跟随深浅模式，不随强调色） --- */
   --prf-danger: #f56c6c;
   --prf-danger-bg: #fef0f0;
   --prf-danger-border: #fde2e2;
@@ -27,63 +45,78 @@
   --prf-warning-bg: #fdf6ec;
   --prf-warning-border: #f3d19e;
 
-  /* 背景 / 表面 */
-  --prf-bg: #f4f5f9;
-  --prf-surface: #ffffff;
-  --prf-surface-2: #f7f8fa;
-  --prf-hover: #eef0f4;
-  --prf-active: rgba(79, 110, 247, 0.1);
-
-  /* 边框 */
-  --prf-border: #e6e8ee;
-  --prf-border-strong: #d8dbe3;
-
-  /* 文本 */
+  /* --- 文本（保持中性以保证对比度） --- */
   --prf-text-1: #1f2329;
   --prf-text-2: #4e5969;
   --prf-text-3: #86909c;
   --prf-text-4: #c0c4cc;
 
-  /* 阴影 */
+  /* --- 阴影 --- */
   --prf-shadow-sm: 0 1px 2px rgba(31, 35, 41, 0.04);
   --prf-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
   --prf-shadow-lg: 0 8px 28px rgba(31, 35, 41, 0.1);
 
-  /* 其他 */
-  --prf-code-bg: #f6f8fa;
-  --prf-code-text: #d56167;
+  /* --- 滚动条 --- */
   --prf-scrollbar: #c9cdd6;
   --prf-scrollbar-hover: #a9aeb8;
+
+  /* --- 映射到 Element Plus 组件变量（随上面 --prf-* 自动换肤） --- */
+  --el-bg-color: var(--prf-surface);
+  --el-bg-color-page: var(--prf-bg);
+  --el-bg-color-overlay: var(--prf-surface);
+  --el-fill-color-blank: var(--prf-surface);
+  --el-fill-color: var(--prf-hover);
+  --el-fill-color-light: var(--prf-surface-2);
+  --el-fill-color-lighter: var(--prf-surface-2);
+  --el-fill-color-extra-light: var(--prf-surface-2);
+  --el-fill-color-dark: var(--prf-border);
+  --el-fill-color-darker: var(--prf-border-strong);
+  --el-border-color: var(--prf-border-strong);
+  --el-border-color-light: var(--prf-border);
+  --el-border-color-lighter: var(--prf-border);
+  --el-border-color-extra-light: var(--prf-surface-2);
+  --el-border-color-dark: var(--prf-border-strong);
+  --el-border-color-darker: var(--prf-border-strong);
+  --el-text-color-primary: var(--prf-text-1);
+  --el-text-color-regular: var(--prf-text-2);
+  --el-text-color-secondary: var(--prf-text-3);
+  --el-text-color-placeholder: var(--prf-text-4);
+  --el-text-color-disabled: var(--prf-text-4);
 }
 
+/* ========== 深色模式基础（默认强调色：紫色） ========== */
 html.dark {
   color-scheme: dark;
 
+  /* --- 强调色：紫色 --- */
   --prf-primary: #6c86ff;
-  --prf-primary-strong: #5271f7;
-  --prf-primary-soft: rgba(108, 134, 255, 0.16);
-  --prf-primary-gradient: linear-gradient(135deg, #6c86ff 0%, #9a6cff 100%);
-  --el-color-primary: #6c86ff;
-  --el-color-primary-light-3: #5d6fd6;
-  --el-color-primary-light-5: #4d5a9e;
-  --el-color-primary-light-7: #3d4669;
-  --el-color-primary-light-8: #343b51;
-  --el-color-primary-light-9: #2c3142;
-  --el-color-primary-dark-2: #566bcc;
+  --prf-primary-2: #9a6cff;
+  --prf-primary-strong: color-mix(in srgb, var(--prf-primary) 80%, #fff);
+  --prf-primary-soft: color-mix(in srgb, var(--prf-primary) 16%, transparent);
+  --prf-primary-gradient: linear-gradient(135deg, var(--prf-primary) 0%, var(--prf-primary-2) 100%);
+  --prf-active: color-mix(in srgb, var(--prf-primary) 16%, transparent);
+  --el-color-primary: var(--prf-primary);
+  --el-color-primary-light-3: color-mix(in srgb, var(--prf-primary) 70%, #000);
+  --el-color-primary-light-5: color-mix(in srgb, var(--prf-primary) 50%, #000);
+  --el-color-primary-light-7: color-mix(in srgb, var(--prf-primary) 30%, #000);
+  --el-color-primary-light-8: color-mix(in srgb, var(--prf-primary) 20%, #000);
+  --el-color-primary-light-9: color-mix(in srgb, var(--prf-primary) 10%, #000);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--prf-primary) 80%, #000);
+
+  /* --- 紫色页面着色（深色） --- */
+  --prf-bg: #10101a;
+  --prf-surface: #191926;
+  --prf-surface-2: #20202f;
+  --prf-hover: #262638;
+  --prf-border: #2b2b3d;
+  --prf-border-strong: #38384e;
+  --prf-code-bg: #0d0d16;
+  --prf-code-text: #9a8cff;
 
   --prf-danger-bg: #3a1f24;
   --prf-danger-border: #5a2c34;
   --prf-warning-bg: #3a3018;
   --prf-warning-border: #5a4a1e;
-
-  --prf-bg: #0e1117;
-  --prf-surface: #171c26;
-  --prf-surface-2: #1e2530;
-  --prf-hover: #212936;
-  --prf-active: rgba(108, 134, 255, 0.16);
-
-  --prf-border: #262d3a;
-  --prf-border-strong: #323b4c;
 
   --prf-text-1: #e8eaf0;
   --prf-text-2: #c3c9d4;
@@ -94,10 +127,139 @@ html.dark {
   --prf-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   --prf-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
 
-  --prf-code-bg: #0d1117;
-  --prf-code-text: #f0a1a8;
   --prf-scrollbar: #363e4d;
   --prf-scrollbar-hover: #444e60;
+
+  /* --- 映射到 Element Plus 组件变量 --- */
+  --el-bg-color: var(--prf-surface);
+  --el-bg-color-page: var(--prf-bg);
+  --el-bg-color-overlay: var(--prf-surface);
+  --el-fill-color-blank: var(--prf-surface);
+  --el-fill-color: var(--prf-hover);
+  --el-fill-color-light: var(--prf-surface-2);
+  --el-fill-color-lighter: var(--prf-surface-2);
+  --el-fill-color-extra-light: var(--prf-surface-2);
+  --el-fill-color-dark: var(--prf-border);
+  --el-fill-color-darker: var(--prf-border-strong);
+  --el-border-color: var(--prf-border-strong);
+  --el-border-color-light: var(--prf-border);
+  --el-border-color-lighter: var(--prf-border);
+  --el-border-color-extra-light: var(--prf-surface-2);
+  --el-border-color-dark: var(--prf-border-strong);
+  --el-border-color-darker: var(--prf-border-strong);
+  --el-text-color-primary: var(--prf-text-1);
+  --el-text-color-regular: var(--prf-text-2);
+  --el-text-color-secondary: var(--prf-text-3);
+  --el-text-color-placeholder: var(--prf-text-4);
+  --el-text-color-disabled: var(--prf-text-4);
+}
+
+/* ============================================================
+   强调色主题（整套页面配色；默认紫色无需覆盖）
+   ============================================================ */
+
+/* ---------- 蓝色 ---------- */
+[data-accent='blue'] {
+  --prf-primary: #3b82f6;
+  --prf-primary-2: #38bdf8;
+  --prf-bg: #f1f6fd;
+  --prf-surface: #ffffff;
+  --prf-surface-2: #f3f8ff;
+  --prf-hover: #e8f0fc;
+  --prf-border: #dbe6f7;
+  --prf-border-strong: #c5d5ef;
+  --prf-code-bg: #f3f7ff;
+  --prf-code-text: #1d4ed8;
+}
+html.dark[data-accent='blue'] {
+  --prf-primary: #5b9bff;
+  --prf-primary-2: #7cc4ff;
+  --prf-bg: #0a1220;
+  --prf-surface: #101a2c;
+  --prf-surface-2: #16233a;
+  --prf-hover: #1c2b47;
+  --prf-border: #253650;
+  --prf-border-strong: #31476a;
+  --prf-code-bg: #0b1426;
+  --prf-code-text: #7cc4ff;
+}
+
+/* ---------- 绿色 ---------- */
+[data-accent='green'] {
+  --prf-primary: #16a34a;
+  --prf-primary-2: #2dd4bf;
+  --prf-bg: #f0f9f3;
+  --prf-surface: #ffffff;
+  --prf-surface-2: #effaf3;
+  --prf-hover: #e4f5ea;
+  --prf-border: #d2ebdb;
+  --prf-border-strong: #b6dcc4;
+  --prf-code-bg: #edf9f1;
+  --prf-code-text: #15803d;
+}
+html.dark[data-accent='green'] {
+  --prf-primary: #4ade80;
+  --prf-primary-2: #5eead4;
+  --prf-bg: #0a140e;
+  --prf-surface: #0f1c15;
+  --prf-surface-2: #15271c;
+  --prf-hover: #1b3223;
+  --prf-border: #24402e;
+  --prf-border-strong: #30543c;
+  --prf-code-bg: #0b1810;
+  --prf-code-text: #6ee7a0;
+}
+
+/* ---------- 橙色 ---------- */
+[data-accent='orange'] {
+  --prf-primary: #ea580c;
+  --prf-primary-2: #f59e0b;
+  --prf-bg: #fdf6ee;
+  --prf-surface: #ffffff;
+  --prf-surface-2: #fdf2e6;
+  --prf-hover: #faeadd;
+  --prf-border: #f1dcc6;
+  --prf-border-strong: #e5c5a3;
+  --prf-code-bg: #fbf0e4;
+  --prf-code-text: #c2410c;
+}
+html.dark[data-accent='orange'] {
+  --prf-primary: #fb923c;
+  --prf-primary-2: #fcd34d;
+  --prf-bg: #170f08;
+  --prf-surface: #1e1510;
+  --prf-surface-2: #281d15;
+  --prf-hover: #32251a;
+  --prf-border: #453424;
+  --prf-border-strong: #5c4630;
+  --prf-code-bg: #1a120a;
+  --prf-code-text: #fdba74;
+}
+
+/* ---------- 玫红 ---------- */
+[data-accent='rose'] {
+  --prf-primary: #e11d48;
+  --prf-primary-2: #fb7185;
+  --prf-bg: #fdf2f4;
+  --prf-surface: #ffffff;
+  --prf-surface-2: #fdf0f2;
+  --prf-hover: #fbe6ea;
+  --prf-border: #f2d2d8;
+  --prf-border-strong: #e7b4bd;
+  --prf-code-bg: #fbf0f2;
+  --prf-code-text: #be123c;
+}
+html.dark[data-accent='rose'] {
+  --prf-primary: #fb7185;
+  --prf-primary-2: #fda4af;
+  --prf-bg: #170b0d;
+  --prf-surface: #1e1215;
+  --prf-surface-2: #28181c;
+  --prf-hover: #322024;
+  --prf-border: #462b31;
+  --prf-border-strong: #5d3941;
+  --prf-code-bg: #1a0f12;
+  --prf-code-text: #fda4af;
 }
 
 /* ============================================================

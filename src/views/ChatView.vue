@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { approveOperation, sendChat } from '@/api/agent'
 import { ApiError } from '@/api/client'
@@ -11,6 +11,10 @@ interface Session {
   id: string
   title: string
   updatedAt: number
+  /** 是否置顶 */
+  pinned?: boolean
+  /** 置顶时间戳，用于置顶组内排序 */
+  pinnedAt?: number
 }
 
 /** 单条聊天消息 */
@@ -38,6 +42,76 @@ const input = ref('')
 const sending = ref(false)
 const approving = ref(false)
 const listEl = ref<HTMLElement | null>(null)
+
+// ---------- 侧边栏：宽度可拖拽调节 + 收起/展开 ----------
+const SIDEBAR_WIDTH_KEY = 'prf_sidebar_width'
+const SIDEBAR_COLLAPSED_KEY = 'prf_sidebar_collapsed'
+
+function loadSidebarWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+    if (Number.isFinite(saved) && saved >= 240 && saved <= 560) return saved
+  } catch {
+    /* ignore */
+  }
+  return 336 // 默认 240px 加宽 40%
+}
+
+function loadSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const sidebarWidth = ref(loadSidebarWidth())
+const sidebarCollapsed = ref(loadSidebarCollapsed())
+const resizing = ref(false)
+
+let resizeStartX = 0
+let resizeStartWidth = 0
+
+function startResize(e: MouseEvent) {
+  e.preventDefault()
+  resizeStartX = e.clientX
+  resizeStartWidth = sidebarWidth.value
+  resizing.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize)
+}
+
+function onResize(e: MouseEvent) {
+  const w = resizeStartWidth + (e.clientX - resizeStartX)
+  sidebarWidth.value = Math.min(Math.max(w, 240), 560)
+}
+
+function stopResize() {
+  resizing.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  document.removeEventListener('mousemove', onResize)
+  document.removeEventListener('mouseup', stopResize)
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(sidebarWidth.value)))
+  } catch {
+    /* ignore */
+  }
+}
+
+watch(sidebarCollapsed, (v) => {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, v ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+})
+
+onBeforeUnmount(() => {
+  stopResize()
+})
 
 function loadSessions(): Session[] {
   try {
@@ -97,6 +171,57 @@ async function deleteSession(s: Session) {
   localStorage.removeItem(msgKey(s.id))
   persistSessions()
   if (currentSessionId.value === s.id) newSession()
+}
+
+// ---------- 会话操作：置顶 / 重命名 / 更多菜单 ----------
+/** 分组展示：置顶标题 + 置顶会话 + 分隔线 + 普通会话 */
+const sessionGroups = computed<Array<{ type: 'pinned-title' | 'divider' | 'session'; s?: Session }>>(() => {
+  const groups: Array<{ type: 'pinned-title' | 'divider' | 'session'; s?: Session }> = []
+  const pinned = sessions.value
+    .filter((s) => s.pinned)
+    .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0))
+  const normal = sessions.value.filter((s) => !s.pinned)
+  if (pinned.length > 0) {
+    groups.push({ type: 'pinned-title' })
+    for (const s of pinned) groups.push({ type: 'session', s })
+    groups.push({ type: 'divider' })
+  }
+  for (const s of normal) groups.push({ type: 'session', s })
+  return groups
+})
+
+function togglePin(s: Session) {
+  if (s.pinned) {
+    s.pinned = false
+    s.pinnedAt = undefined
+  } else {
+    s.pinned = true
+    s.pinnedAt = Date.now()
+  }
+  persistSessions()
+}
+
+async function renameSession(s: Session) {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
+      inputValue: s.title,
+      inputPattern: /\S+/,
+      inputErrorMessage: '名称不能为空',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+    const title = (value ?? '').trim().slice(0, 24)
+    if (title) s.title = title
+    persistSessions()
+  } catch {
+    // 用户取消
+  }
+}
+
+function handleMenu(command: string | number | object, s: Session) {
+  if (command === 'pin') togglePin(s)
+  else if (command === 'rename') renameSession(s)
+  else if (command === 'delete') deleteSession(s)
 }
 
 // ---------- 发送 / 响应 ----------
@@ -281,33 +406,85 @@ onMounted(() => {
 <template>
   <div class="chat-view">
     <!-- 左侧会话栏 -->
-    <aside class="session-panel">
+    <aside
+      class="session-panel"
+      :class="{ collapsed: sidebarCollapsed, resizing }"
+      :style="{ width: sidebarCollapsed ? '0px' : sidebarWidth + 'px' }"
+    >
       <div class="session-head">
-        <el-button type="primary" class="new-btn" @click="newSession">
-          <el-icon><Plus /></el-icon>
-          <span>新建会话</span>
-        </el-button>
+        <div class="session-actions">
+          <el-button type="primary" class="new-btn" @click="newSession">
+            <el-icon><Plus /></el-icon>
+            <span>新建会话</span>
+          </el-button>
+          <el-tooltip content="收起侧边栏" placement="bottom">
+            <el-button class="collapse-btn" @click="sidebarCollapsed = true">
+              <el-icon><Fold /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
       </div>
       <div class="session-list">
-        <div
-          v-for="s in sessions"
-          :key="s.id"
-          class="session-item"
-          :class="{ active: s.id === currentSessionId }"
-          @click="switchSession(s.id)"
-        >
-          <el-icon class="session-ico"><ChatDotRound /></el-icon>
-          <span class="session-title">{{ s.title }}</span>
-          <el-icon class="session-del" title="删除会话" @click.stop="deleteSession(s)"><Delete /></el-icon>
-        </div>
+        <template v-for="g in sessionGroups" :key="g.type === 'session' ? g.s!.id : g.type">
+          <!-- 置顶分组标题 -->
+          <div v-if="g.type === 'pinned-title'" class="session-group-title">
+            <el-icon class="group-ico">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
+                />
+              </svg>
+            </el-icon>
+            <span>置顶</span>
+          </div>
+          <!-- 置顶与普通会话之间的分隔线 -->
+          <div v-else-if="g.type === 'divider'" class="session-divider"></div>
+          <!-- 会话项 -->
+          <div
+            v-else
+            class="session-item"
+            :class="{ active: g.s!.id === currentSessionId }"
+            @click="switchSession(g.s!.id)"
+          >
+            <el-icon class="session-ico"><ChatDotRound /></el-icon>
+            <span class="session-title">{{ g.s!.title }}</span>
+            <el-dropdown
+              trigger="click"
+              popper-class="session-more-popper"
+              @command="(cmd: string | number | object) => handleMenu(cmd, g.s!)"
+              @click.stop
+            >
+              <span class="session-more" title="更多操作">
+                <el-icon><MoreFilled /></el-icon>
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="pin">
+                    {{ g.s!.pinned ? '取消置顶' : '置顶' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item command="rename">重命名</el-dropdown-item>
+                  <el-dropdown-item command="delete" class="danger-item">删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </template>
         <div v-if="sessions.length === 0" class="session-empty">
           暂无历史会话<br />开始你的第一次提问吧
         </div>
       </div>
+
+      <!-- 拖拽调宽手柄 -->
+      <div v-if="!sidebarCollapsed" class="resize-handle" title="拖动调整宽度" @mousedown="startResize"></div>
     </aside>
 
     <!-- 中央单栏对话区 -->
     <section class="chat-main">
+      <!-- 侧边栏收起时的展开按钮 -->
+      <button v-if="sidebarCollapsed" class="sidebar-expand" type="button" title="展开侧边栏" @click="sidebarCollapsed = false">
+        <el-icon><Expand /></el-icon>
+      </button>
       <!-- 空会话：居中欢迎 + 中央输入框 -->
       <div v-if="messages.length === 0" class="chat-empty">
         <div class="chat-column chat-empty-column">
@@ -455,19 +632,61 @@ onMounted(() => {
 
 /* ---------- 会话栏 ---------- */
 .session-panel {
-  width: 240px;
+  width: 336px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--prf-surface);
   border-right: 1px solid var(--prf-border);
+  position: relative;
+  overflow: hidden;
+  transition: width 0.25s ease;
+}
+.session-panel.resizing {
+  transition: none;
+}
+.session-panel.collapsed {
+  border-right: none;
 }
 .session-head {
   padding: 12px;
   border-bottom: 1px solid var(--prf-border);
 }
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .new-btn {
-  width: 100%;
+  flex: 1;
+}
+.collapse-btn {
+  flex-shrink: 0;
+  width: 32px;
+  padding: 0;
+}
+/* 拖拽调宽手柄 */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.2s;
+}
+.resize-handle:hover::after {
+  background: var(--prf-primary);
 }
 .session-list {
   flex: 1;
@@ -503,17 +722,41 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-del {
+.session-more {
   flex-shrink: 0;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 15px;
   color: var(--prf-text-4);
   visibility: hidden;
 }
-.session-item:hover .session-del {
+.session-item:hover .session-more {
   visibility: visible;
 }
-.session-del:hover {
-  color: var(--prf-danger);
+.session-more:hover {
+  color: var(--prf-primary);
+  background: var(--prf-hover);
+}
+.session-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--prf-text-3);
+}
+.group-ico {
+  font-size: 13px;
+  color: var(--prf-primary);
+}
+.session-divider {
+  margin: 6px 12px 8px;
+  border-top: 1px solid var(--prf-border);
 }
 .session-empty {
   padding: 32px 12px;
@@ -529,6 +772,35 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+}
+/* 侧边栏收起时的展开按钮：与收起按钮同高度对齐（会话栏头部行） */
+.sidebar-expand {
+  position: absolute;
+  top: 13px;
+  left: 10px;
+  z-index: 10;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--prf-border);
+  background: var(--prf-surface);
+  color: var(--prf-text-2);
+  cursor: pointer;
+  font-size: 15px;
+  box-shadow: var(--prf-shadow-sm);
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background-color 0.2s;
+}
+.sidebar-expand:hover {
+  color: var(--prf-primary);
+  border-color: var(--prf-primary);
+  background: var(--prf-active);
 }
 .chat-scroll {
   flex: 1;
@@ -645,8 +917,9 @@ onMounted(() => {
   margin-bottom: 28px;
 }
 
-/* 用户消息：右对齐浅色圆角块 */
+/* 用户消息：右对齐浅色圆角块，宽度随内容自适应 */
 .user-msg {
+  width: fit-content;
   max-width: 78%;
   margin-left: auto;
   padding: 10px 14px;
@@ -947,5 +1220,16 @@ onMounted(() => {
   text-align: center;
   font-size: 12px;
   color: var(--prf-text-4);
+}
+</style>
+
+<style>
+/* 会话更多操作下拉菜单（teleport 到 body，需非 scoped 样式）：删除项红字 */
+.session-more-popper .danger-item {
+  color: var(--prf-danger) !important;
+}
+.session-more-popper .danger-item:hover {
+  background: var(--prf-danger-bg) !important;
+  color: var(--prf-danger) !important;
 }
 </style>
