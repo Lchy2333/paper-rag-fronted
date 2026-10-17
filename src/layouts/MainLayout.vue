@@ -2,12 +2,12 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { checkAgentHealth } from '@/api/agent'
-import { useTheme } from '@/composables/useTheme'
+import { THEMES, useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
 
-const { isDark, toggleTheme } = useTheme()
+const { theme, isDark, setTheme } = useTheme()
 
 const activeMenu = ref(route.name === 'documents' ? 'documents' : 'chat')
 
@@ -57,15 +57,35 @@ function handleSelect(key: string) {
       </el-menu>
 
       <div class="header-right">
-        <button
-          class="theme-toggle"
-          type="button"
-          :title="isDark ? '切换到浅色模式' : '切换到暗色模式'"
-          :aria-label="isDark ? '切换到浅色模式' : '切换到暗色模式'"
-          @click="toggleTheme"
-        >
-          <el-icon :size="16"><Moon v-if="isDark" /><Sunny v-else /></el-icon>
-        </button>
+        <el-popover placement="bottom" :width="264" trigger="click" popper-class="theme-popper">
+          <template #reference>
+            <button
+              class="theme-toggle"
+              type="button"
+              title="选择主题"
+              aria-label="选择主题"
+            >
+              <el-icon :size="16"><Moon v-if="isDark" /><Sunny v-else /></el-icon>
+            </button>
+          </template>
+          <div class="theme-picker">
+            <div class="theme-picker-title">选择主题</div>
+            <div class="theme-picker-grid">
+              <button
+                v-for="t in THEMES"
+                :key="t.id"
+                type="button"
+                class="theme-option"
+                :class="{ active: theme === t.id }"
+                @click="setTheme(t.id)"
+              >
+                <span class="theme-swatch" :style="{ background: t.color }"></span>
+                <span class="theme-label">{{ t.label }}</span>
+                <el-icon v-if="theme === t.id" class="theme-check"><Check /></el-icon>
+              </button>
+            </div>
+          </div>
+        </el-popover>
         <span class="status" :class="agentOnline ? 'online' : 'offline'" :title="agentOnline ? 'Agent 服务在线' : 'Agent 服务不可达'">
           <span class="status-dot"></span>
           {{ agentOnline ? 'Agent 在线' : 'Agent 离线' }}
@@ -188,5 +208,61 @@ function handleSelect(key: string) {
 .main-body {
   flex: 1;
   min-height: 0;
+}
+</style>
+
+<style>
+/* 主题选择器弹窗（teleport 到 body，需非 scoped 样式） */
+.theme-popper {
+  padding: 6px;
+}
+.theme-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--prf-text-1);
+  padding: 4px 8px 8px;
+}
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--prf-text-2);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.theme-option:hover {
+  background: var(--prf-hover);
+}
+.theme-option.active {
+  border-color: var(--prf-primary);
+  background: var(--prf-active);
+  color: var(--prf-primary);
+}
+.theme-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.theme-label {
+  flex: 1;
+  text-align: left;
+}
+.theme-check {
+  font-size: 13px;
+  color: var(--prf-primary);
 }
 </style>
