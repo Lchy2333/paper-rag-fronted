@@ -2,9 +2,12 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { checkAgentHealth } from '@/api/agent'
+import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
+
+const { isDark, toggleTheme } = useTheme()
 
 const activeMenu = ref(route.name === 'documents' ? 'documents' : 'chat')
 
@@ -54,6 +57,15 @@ function handleSelect(key: string) {
       </el-menu>
 
       <div class="header-right">
+        <button
+          class="theme-toggle"
+          type="button"
+          :title="isDark ? '切换到浅色模式' : '切换到暗色模式'"
+          :aria-label="isDark ? '切换到浅色模式' : '切换到暗色模式'"
+          @click="toggleTheme"
+        >
+          <el-icon :size="16"><Moon v-if="isDark" /><Sunny v-else /></el-icon>
+        </button>
         <span class="status" :class="agentOnline ? 'online' : 'offline'" :title="agentOnline ? 'Agent 服务在线' : 'Agent 服务不可达'">
           <span class="status-dot"></span>
           {{ agentOnline ? 'Agent 在线' : 'Agent 离线' }}
@@ -79,31 +91,38 @@ function handleSelect(key: string) {
   align-items: center;
   gap: 24px;
   height: 52px;
-  padding: 0 20px;
-  background: #fff;
+  padding: 0 16px;
+  background: var(--prf-surface);
   border-bottom: 1px solid var(--prf-border);
+  box-shadow: var(--prf-shadow-sm);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   flex-shrink: 0;
 }
 .brand .el-icon {
-  background: var(--prf-primary);
-  border-radius: 6px;
-  padding: 3px;
+  background: var(--prf-primary-gradient);
+  border-radius: 8px;
+  padding: 5px;
+  color: #fff;
+  box-shadow: 0 2px 8px var(--prf-primary-soft);
 }
 .brand-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1f2329;
+  background: var(--prf-primary-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .main-nav {
   flex: 1;
   border-bottom: none !important;
+  background: transparent !important;
 }
 .main-nav :deep(.el-menu-item) {
   height: 52px;
@@ -114,26 +133,56 @@ function handleSelect(key: string) {
 }
 
 .header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   flex-shrink: 0;
 }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--prf-border);
+  background: var(--prf-surface);
+  color: var(--prf-text-2);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background-color 0.2s,
+    transform 0.2s;
+}
+.theme-toggle:hover {
+  color: var(--prf-primary);
+  border-color: var(--prf-primary);
+  background: var(--prf-active);
+  transform: rotate(15deg);
+}
+
 .status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--prf-text-3);
 }
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #c0c4cc;
+  background: var(--prf-text-4);
 }
 .status.online .status-dot {
-  background: #67c23a;
+  background: var(--prf-success);
+  box-shadow: 0 0 0 3px rgba(103, 194, 58, 0.2);
 }
 .status.offline .status-dot {
-  background: #f56c6c;
+  background: var(--prf-danger);
+  box-shadow: 0 0 0 3px rgba(245, 108, 108, 0.2);
 }
 
 .main-body {

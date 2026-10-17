@@ -210,10 +210,11 @@ onBeforeUnmount(() => {
 }
 
 .docs-card {
-  background: #fff;
+  background: var(--prf-surface);
   border: 1px solid var(--prf-border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 16px 20px;
+  box-shadow: var(--prf-shadow-sm);
 }
 
 .upload-card {
@@ -243,7 +244,7 @@ onBeforeUnmount(() => {
 .table-head h3 {
   margin: 0;
   font-size: 15px;
-  color: #1f2329;
+  color: var(--prf-text-1);
 }
 .table-tools {
   display: flex;
