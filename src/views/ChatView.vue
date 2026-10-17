@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { approveOperation, sendChat } from '@/api/agent'
 import { ApiError } from '@/api/client'
 import type { ApprovalPayload, ChatResponse } from '@/api/types'
+import { renderMarkdown } from '@/utils/markdown'
 
 /** 会话条目（新建但未发送时 currentSessionId 为 null，不入列表） */
 interface Session {
@@ -298,7 +299,13 @@ onMounted(() => {
                 <span>思考中…</span>
               </div>
               <template v-else>
-                <div v-if="m.content" class="msg-text">{{ m.content }}</div>
+                <!-- Agent 回复按 Markdown 渲染；用户消息保持纯文本 -->
+                <div
+                  v-if="m.content && m.role === 'assistant'"
+                  class="msg-text markdown-body"
+                  v-html="renderMarkdown(m.content)"
+                ></div>
+                <div v-else-if="m.content" class="msg-text">{{ m.content }}</div>
                 <div v-if="m.error && m.errorText" class="msg-error">{{ m.errorText }}</div>
 
                 <!-- HITL 审批卡 -->
@@ -506,6 +513,10 @@ onMounted(() => {
   border: 1px solid var(--prf-border);
   word-break: break-word;
 }
+/* Agent 回复含代码块 / 表格，放宽宽度 */
+.msg-row.assistant .msg-bubble {
+  max-width: 86%;
+}
 .msg-row.user .msg-bubble {
   background: var(--prf-primary);
   border-color: var(--prf-primary);
@@ -521,6 +532,119 @@ onMounted(() => {
 .msg-error {
   color: #f56c6c;
   white-space: pre-wrap;
+}
+
+/* ---------- Markdown 渲染 ---------- */
+.msg-text.markdown-body {
+  white-space: normal;
+}
+.msg-text.markdown-body :deep(p) {
+  margin: 0 0 8px;
+}
+.msg-text.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.msg-text.markdown-body :deep(h1),
+.msg-text.markdown-body :deep(h2),
+.msg-text.markdown-body :deep(h3),
+.msg-text.markdown-body :deep(h4),
+.msg-text.markdown-body :deep(h5),
+.msg-text.markdown-body :deep(h6) {
+  margin: 14px 0 8px;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.msg-text.markdown-body :deep(h1) {
+  font-size: 19px;
+}
+.msg-text.markdown-body :deep(h2) {
+  font-size: 18px;
+}
+.msg-text.markdown-body :deep(h3) {
+  font-size: 17px;
+}
+.msg-text.markdown-body :deep(h4) {
+  font-size: 15px;
+}
+.msg-text.markdown-body :deep(ul),
+.msg-text.markdown-body :deep(ol) {
+  margin: 0 0 8px;
+  padding-left: 22px;
+}
+.msg-text.markdown-body :deep(li) {
+  margin: 2px 0;
+}
+.msg-text.markdown-body :deep(a) {
+  color: var(--prf-primary);
+  text-decoration: none;
+}
+.msg-text.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+.msg-text.markdown-body :deep(blockquote) {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--prf-primary);
+  background: #f7f8fa;
+  color: #4e5969;
+}
+.msg-text.markdown-body :deep(blockquote p) {
+  margin: 4px 0;
+}
+.msg-text.markdown-body :deep(code) {
+  background: #f2f3f5;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 13px;
+  color: #d56167;
+}
+.msg-text.markdown-body :deep(pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: #f6f8fa;
+  border: 1px solid var(--prf-border);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.msg-text.markdown-body :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: #24292e;
+}
+.msg-text.markdown-body :deep(pre code.hljs) {
+  background: transparent;
+  padding: 0;
+}
+.msg-text.markdown-body :deep(table) {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.msg-text.markdown-body :deep(th),
+.msg-text.markdown-body :deep(td) {
+  border: 1px solid var(--prf-border);
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+.msg-text.markdown-body :deep(th) {
+  background: #f7f8fa;
+  font-weight: 600;
+}
+.msg-text.markdown-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--prf-border);
+  margin: 12px 0;
+}
+.msg-text.markdown-body :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
 }
 .msg-pending {
   display: flex;
