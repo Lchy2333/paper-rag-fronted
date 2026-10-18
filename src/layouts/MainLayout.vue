@@ -3,8 +3,8 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { checkAgentHealth } from '@/api/agent'
-import { checkRagHealth } from '@/api/rag'
 import { authUser, clearAuth } from '@/api/authState'
+import { useServiceHealth } from '@/composables/useServiceHealth'
 import { THEMES, useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
@@ -14,14 +14,25 @@ const { theme, isDark, setTheme } = useTheme()
 
 const activeMenu = ref(route.name === 'documents' ? 'documents' : 'chat')
 
-// Agent / RAG 服务健康状态（顶部右侧小圆点，5s 轮询）
+// 服务健康状态（全部来自 agent 分层 /health，前端零直连）
 const agentOnline = ref<boolean | null>(null)
-const ragOnline = ref<boolean | null>(null)
+const healthChecks = ref<{
+  rag?: { status?: string; error?: string }
+  llm?: { status?: string; error?: string }
+} | null>(null)
 let timer: number | undefined
 
+const { rag: ragView, llm: llmView } = useServiceHealth(healthChecks)
+
 async function refreshHealth() {
-  agentOnline.value = await checkAgentHealth()
-  ragOnline.value = await checkRagHealth()
+  const h = await checkAgentHealth()
+  if (!h) {
+    agentOnline.value = false
+    healthChecks.value = null
+    return
+  }
+  agentOnline.value = h.status === 'ok'
+  healthChecks.value = h.checks
 }
 
 onMounted(() => {
@@ -110,9 +121,13 @@ async function handleLogout() {
           <span class="status-dot"></span>
           {{ agentOnline ? 'Agent 在线' : 'Agent 离线' }}
         </span>
-        <span class="status" :class="ragOnline ? 'online' : 'offline'" :title="ragOnline ? 'RAG 服务在线' : 'RAG 服务不可达'">
+        <span class="status" :class="ragView.cls" :title="ragView.desc">
           <span class="status-dot"></span>
-          {{ ragOnline ? 'RAG 在线' : 'RAG 离线' }}
+          {{ ragView.label }}
+        </span>
+        <span class="status" :class="llmView.cls" :title="llmView.desc">
+          <span class="status-dot"></span>
+          {{ llmView.label }}
         </span>
 
         <el-dropdown trigger="click" popper-class="user-popper" @command="(cmd: string) => cmd === 'logout' && handleLogout()">
@@ -243,6 +258,10 @@ async function handleLogout() {
 .status.offline .status-dot {
   background: var(--prf-danger);
   box-shadow: 0 0 0 3px rgba(245, 108, 108, 0.2);
+}
+.status.unknown .status-dot {
+  background: var(--prf-warning);
+  box-shadow: 0 0 0 3px rgba(230, 162, 60, 0.2);
 }
 
 /* 用户信息 + 退出 */

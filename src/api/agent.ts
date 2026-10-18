@@ -95,12 +95,23 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
+/** 服务健康状态（agent 分层 /health，见 agent 仓 architecture.md §13）。 */
+export interface HealthResponse {
+  /** 存活判定：agent + database，供编排 healthcheck */
+  status: 'ok' | 'error'
+  checks: {
+    database: { status: 'ok' | 'error'; error?: string; latency_ms?: number }
+    rag: { status: 'ok' | 'error'; error?: string; latency_ms?: number }
+    llm: { status: 'ok' | 'error' | 'unknown'; error?: string }
+  }
+}
+
 /** Agent 健康检查（经代理直通根路径 /health，注意不带 /api 前缀）。 */
-export async function checkAgentHealth(): Promise<boolean> {
+export async function checkAgentHealth(): Promise<HealthResponse | null> {
   try {
-    const { data } = await agentHealthClient.get<{ status: string }>('/health')
-    return data.status === 'ok'
+    const { data } = await agentHealthClient.get<HealthResponse>('/health')
+    return data
   } catch {
-    return false
+    return null
   }
 }
