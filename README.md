@@ -4,6 +4,10 @@
 
 技术栈：**Vue 3 + Vite + TypeScript + Element Plus**（Vue Router 4 / Axios）。
 
+> **生产部署**：已容器化（`Dockerfile`：Node 构建 dist → Nginx 托管 + 反代 `/api`、`/health` 到 agent）。
+> 完整编排在 [paper-rag-deploy](https://github.com/Lchy2333/paper-rag-deploy) 仓，`docker compose up -d --build` 一键拉起。
+> BFF 改造后前端零直连 RAG，Nginx 只认 agent 一个上游，无 `/rag` 反代规则。
+
 ## 页面
 
 | 路由 | 页面 | 说明 |
