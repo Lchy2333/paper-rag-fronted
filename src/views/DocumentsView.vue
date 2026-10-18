@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadUserFile } from 'element-plus'
-import { deleteDocument, listDocuments, uploadDocuments } from '@/api/rag'
+import { deleteDocument, getDocument, listDocuments, rechunkDocument, uploadDocuments } from '@/api/rag'
 import { ApiError } from '@/api/client'
 import type { RagDocument } from '@/api/ragTypes'
 
@@ -10,6 +10,16 @@ const docs = ref<RagDocument[]>([])
 const loading = ref(false)
 const uploading = ref(false)
 const uploadList = ref<UploadUserFile[]>([])
+
+// ---------- 详情 / 重分块对话框 ----------
+const detailDoc = ref<RagDocument | null>(null)
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+
+const rechunkDoc = ref<RagDocument | null>(null)
+const rechunkVisible = ref(false)
+const rechunkSubmitting = ref(false)
+const rechunkForm = ref<{ chunk_size?: number; chunk_overlap?: number }>({})
 
 let timer: number | undefined
 
@@ -26,6 +36,45 @@ async function refresh() {
     ElMessage.error((e as ApiError).message)
   } finally {
     loading.value = false
+  }
+}
+
+// ---------- 详情 ----------
+async function openDetail(doc: RagDocument) {
+  detailDoc.value = doc
+  detailVisible.value = true
+  detailLoading.value = true
+  try {
+    // 拉最新状态（处理进度 / 失败原因等）
+    detailDoc.value = await getDocument(doc.id)
+  } catch (e) {
+    ElMessage.error((e as ApiError).message)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+// ---------- 重分块 ----------
+function openRechunk(doc: RagDocument) {
+  rechunkDoc.value = doc
+  rechunkForm.value = {}
+  rechunkVisible.value = true
+}
+
+async function submitRechunk() {
+  if (!rechunkDoc.value) return
+  rechunkSubmitting.value = true
+  try {
+    const opts =
+      rechunkForm.value.chunk_size || rechunkForm.value.chunk_overlap ? rechunkForm.value : {}
+    await rechunkDocument(rechunkDoc.value.id, opts)
+    ElMessage.success('已提交重新分块，处理中')
+    rechunkVisible.value = false
+    await refresh()
+  } catch (e) {
+    ElMessage.error((e as ApiError).message)
+  } finally {
+    rechunkSubmitting.value = false
   }
 }
 
@@ -186,8 +235,16 @@ onBeforeUnmount(() => {
         <el-table-column label="创建时间" width="170">
           <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90" align="center" fixed="right">
+        <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
+            <el-button type="primary" link @click="openDetail(row)">
+              <el-icon><View /></el-icon>
+              <span>详情</span>
+            </el-button>
+            <el-button type="warning" link @click="openRechunk(row)">
+              <el-icon><RefreshRight /></el-icon>
+              <span>重分块</span>
+            </el-button>
             <el-button type="danger" link @click="onDelete(row)">
               <el-icon><Delete /></el-icon>
               <span>删除</span>
@@ -196,6 +253,52 @@ onBeforeUnmount(() => {
         </el-table-column>
       </el-table>
     </div>
+
+    <!-- 文档详情对话框 -->
+    <el-dialog v-model="detailVisible" :title="detailDoc?.filename" width="520px" v-loading="detailLoading">
+      <template v-if="detailDoc">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTag(detailDoc.status).type" size="small">
+              {{ statusTag(detailDoc.status).label }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="文档 ID">{{ detailDoc.id }}</el-descriptions-item>
+          <el-descriptions-item label="页数">{{ detailDoc.page_count }}</el-descriptions-item>
+          <el-descriptions-item label="分块数">{{ detailDoc.chunk_count }}</el-descriptions-item>
+          <el-descriptions-item label="大小">{{ formatSize(detailDoc.size_bytes) }}</el-descriptions-item>
+          <el-descriptions-item label="分块参数">
+            {{ detailDoc.chunk_size || '默认' }} / {{ detailDoc.chunk_overlap || '默认' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间" :span="2">{{ formatDate(detailDoc.created_at) }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailDoc.content_hash" label="内容哈希" :span="2">
+            <code class="hash-text">{{ detailDoc.content_hash }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="detailDoc.status === 'failed' && detailDoc.error" label="失败原因" :span="2">
+            <span class="error-text">{{ detailDoc.error }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+      </template>
+    </el-dialog>
+
+    <!-- 重分块对话框 -->
+    <el-dialog v-model="rechunkVisible" title="重新分块" width="440px">
+      <p class="rechunk-tip">
+        对「{{ rechunkDoc?.filename }}」删除全部旧分块后按新参数重新分块入库（较慢，期间旧分块仍可用）。不填则使用文档当前参数。
+      </p>
+      <el-form label-width="90px">
+        <el-form-item label="分块大小">
+          <el-input-number v-model="rechunkForm.chunk_size" :min="100" :max="8000" :step="100" placeholder="默认" />
+        </el-form-item>
+        <el-form-item label="重叠字符数">
+          <el-input-number v-model="rechunkForm.chunk_overlap" :min="0" :max="2000" :step="10" placeholder="默认" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rechunkVisible = false">取消</el-button>
+        <el-button type="primary" :loading="rechunkSubmitting" @click="submitRechunk">开始重分块</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -253,5 +356,19 @@ onBeforeUnmount(() => {
 }
 .table-card :deep(.el-table) {
   flex: 1;
+}
+.hash-text {
+  font-size: 12px;
+  word-break: break-all;
+}
+.error-text {
+  color: var(--prf-danger);
+  white-space: pre-wrap;
+}
+.rechunk-tip {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--prf-text-3);
 }
 </style>
