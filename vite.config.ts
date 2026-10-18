@@ -6,7 +6,6 @@ import { defineConfig, loadEnv } from 'vite'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const agentUrl = env.VITE_AGENT_BASE_URL || 'http://localhost:8001'
-  const ragUrl = env.VITE_RAG_BASE_URL || 'http://localhost:8080'
 
   return {
     plugins: [vue()],
@@ -29,12 +28,6 @@ export default defineConfig(({ mode }) => {
         '/health': {
           target: agentUrl,
           changeOrigin: true,
-        },
-        // RAG 服务：前端加 /rag 前缀，转发时剥掉，直通 RAG 原生路径 /api/v1/...
-        '/rag': {
-          target: ragUrl,
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rag/, ''),
         },
       },
     },

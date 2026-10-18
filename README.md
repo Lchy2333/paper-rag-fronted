@@ -15,16 +15,19 @@
 ## 对接架构
 
 ```
-浏览器 ──Vite dev proxy──► Agent :8001  (/api/auth/* /api/chat /api/approve /api/threads /health)
-     └──────────────────► RAG   :8080  (/rag/api/v1/* 直连，带 X-API-Key + X-User-ID)
+浏览器 ──Vite dev proxy──► Agent :8001  （唯一入口）
+     /api/auth/* /api/chat /api/approve /api/threads   → 对话/会话/审批
+     /api/documents/*                                   → 文档管理（BFF 转发 RAG）
+     /health                                            → 分层健康检查（含 db/rag/llm 状态）
 ```
 
-- **认证**：`/auth/register`、`/auth/login` 签发 JWT；登录态存 `localStorage`，Agent 请求自动携带 `Authorization: Bearer`，RAG 请求自动携带 `X-User-ID`。
+- **认证**：`/auth/register`、`/auth/login` 签发 JWT；登录态存 `localStorage`，所有请求自动携带 `Authorization: Bearer`。
 - **对话页走 Agent**：多轮会话、会话管理（列/改名/置顶/删除）、HITL 审批都是 Agent 的职责。
-- **文档库页直连 RAG**：Agent 当前没有暴露文档管理的 REST 端点（只有 LLM 工具），浏览器无法走"LLM 给文件路径"的上传流程，故前端直连 RAG 的文档 CRUD（携带当前登录用户 `user_id` 作为 `X-User-ID`）。
-- 开发环境通过 Vite 代理避免跨域（Agent 未配 CORS 中间件）；生产构建需在 Nginx/网关层做同样转发。
+- **文档库页经 Agent 转发（BFF）**：文档 CRUD 走 Agent 的 `/api/documents/*`，由 Agent 注入可信 `X-User-ID`（从 JWT 验签）+ `X-API-Key`（服务端持有）再转发 RAG。**前端不再直连 RAG、不持有任何 RAG 密钥**。
+- **健康状态读 Agent**：顶栏状态灯全部来自 `/health` 的 `checks`（database / rag / llm 各自 ok/error/unknown），前端零直连。
+- 开发环境通过 Vite 代理避免跨域（Agent 未配 CORS 中间件）；生产构建需在 Nginx 层做同样转发。
 
-> ⚠️ 注意：文档库页的**删除走 RAG 直连，不经过 Agent 的 HITL 审批**（前端仅做了二次确认）。若需统一审批，后续应改为经 Agent 代理。
+> ✅ **安全改进（BFF）**：前端不再携带 `X-API-Key`（避免打进 bundle 泄露），也无法伪造 `X-User-ID`（由 Agent 从 JWT 注入可信身份）。文档删除经 Agent 转发 + `audit_logs` 留痕。
 
 ## 快速开始
 
@@ -43,10 +46,9 @@ npm run dev
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `VITE_AGENT_BASE_URL` | `http://localhost:8001` | Agent 服务地址 |
-| `VITE_RAG_BASE_URL` | `http://localhost:8080` | RAG 服务地址 |
-| `VITE_RAG_API_KEY` | 空 | RAG 服务鉴权 Key（`X-API-Key` 头）；留空 = RAG 开发模式不校验 |
-| `VITE_RAG_USER_ID` | 空 | RAG 用户身份兜底（`X-User-ID` 头）；登录后会优先用当前登录用户；未登录才回退。填 RAG 侧 `server.admin_users` 的用户 UUID 可让文档库页以管理员身份看全库 |
+| `VITE_AGENT_BASE_URL` | `http://localhost:8001` | Agent 服务地址（唯一入口，Vite dev proxy 转发目标） |
+
+> ⚠️ 前端只连 Agent（BFF）：不持有 RAG 密钥、不直连 RAG，因此 **不再需要 `VITE_RAG_BASE_URL` / `VITE_RAG_API_KEY` / `VITE_RAG_USER_ID`**（历史版本有，已移除）。
 
 ## 常用命令
 
@@ -79,7 +81,7 @@ src/
 
 ## 接口覆盖对照（后端能力 ↔ 前端 API 层）
 
-**Agent 服务（:8001）** — `src/api/agent.ts`：
+**Agent 服务（:8001，唯一入口）** — `src/api/agent.ts`：
 
 | 端点 | 前端函数 |
 |---|---|
@@ -90,25 +92,23 @@ src/
 | `GET /api/threads` | `listThreads()` |
 | `PATCH /api/threads/:id` | `updateThread()` |
 | `DELETE /api/threads/:id` | `deleteThread()` |
-| `GET /health` | `checkAgentHealth()` |
+| `GET /health` | `checkAgentHealth()`（分层健康检查，含 db/rag/llm 状态） |
 
-**RAG 服务（:8080）** — `src/api/rag.ts`：
+**文档管理（经 Agent BFF 转发 RAG）** — `src/api/rag.ts`：
 
-| 端点 | 前端函数 |
-|---|---|
-| `GET /api/v1/health` | `checkRagHealth()` |
-| `GET /api/v1/documents` | `listDocuments()` |
-| `GET /api/v1/documents/:id` | `getDocument()` |
-| `POST /api/v1/documents` | `uploadDocuments()`（可带 `chunk_size` / `chunk_overlap`） |
-| `POST /api/v1/documents/:id/rechunk` | `rechunkDocument()` |
-| `DELETE /api/v1/documents/:id` | `deleteDocument()` |
-| `POST /api/v1/search` | `search()` |
-| `POST /api/v1/connections/test` | `testConnection()` |
-| `POST /api/v1/ask`（仅管理员） | `ask()` |
+| 前端路径（Agent） | 转发目标（RAG） | 前端函数 |
+|---|---|---|
+| `GET /api/documents` | `GET /api/v1/documents` | `listDocuments()` |
+| `GET /api/documents/:id` | `GET /api/v1/documents/:id` | `getDocument()` |
+| `POST /api/documents` | `POST /api/v1/documents` | `uploadDocuments()`（可带 `chunk_size` / `chunk_overlap`） |
+| `POST /api/documents/:id/rechunk` | `POST /api/v1/documents/:id/rechunk` | `rechunkDocument()` |
+| `DELETE /api/documents/:id` | `DELETE /api/v1/documents/:id` | `deleteDocument()` |
+
+> `search` / `testConnection` / `ask` 已从前端 API 层移除（无页面调用方；检索由 Agent 的 LLM 工具 `search_rag` 提供，ask/test 属 RAG 内部能力）。
 
 ## 已知边界 / 后续方向
 
 - Agent 流式输出（SSE）上线后，对话页可接入打字机效果（目前为一次性返回）。
 - Agent 未提供"读取会话历史消息"的端点：切换会话时消息内容取本地缓存（`localStorage`），换浏览器/清缓存后仅显示"服务端续接"提示，但继续提问仍会正确续接服务端上下文。
-- 文档库删除经 Agent 代理以统一 HITL 审批。
-- `/api/v1/ask` 为 RAG 内部测试接口（仅管理员、全局检索），前端 API 层已对齐但页面未暴露入口。
+- 文档删除已改为经 Agent 转发 + `audit_logs` 留痕（前端确认框 + Agent 审计）；Chat 场景删除仍走 Agent 的 HITL 审批。
+- `/api/v1/ask` 为 RAG 内部测试接口（仅管理员、全局检索），前端不暴露、也不经 Agent 转发。
