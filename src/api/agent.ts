@@ -1,5 +1,41 @@
 import { agentClient, agentHealthClient, handleError } from './client'
-import type { ApproveResponse, ChatResponse } from './types'
+import { setAuth } from './authState'
+import type {
+  ApproveResponse,
+  ChatResponse,
+  DeleteThreadResponse,
+  ThreadOut,
+  TokenResponse,
+  UpdateThreadRequest,
+  UserOut,
+} from './types'
+
+/**
+ * 注册新用户。
+ * @returns UserOut —— 注册成功后仍需调用 login 获取 JWT。
+ */
+export async function register(username: string, password: string): Promise<UserOut> {
+  try {
+    const { data } = await agentClient.post<UserOut>('/auth/register', { username, password })
+    return data
+  } catch (e) {
+    return handleError(e, '注册失败')
+  }
+}
+
+/**
+ * 登录并保存凭证（JWT + user_id）。
+ * 后续所有 Agent / RAG 请求会自动携带 Bearer / X-User-ID（见 client.ts 拦截器）。
+ */
+export async function login(username: string, password: string): Promise<TokenResponse> {
+  try {
+    const { data } = await agentClient.post<TokenResponse>('/auth/login', { username, password })
+    setAuth(data.access_token, { user_id: data.user_id, username })
+    return data
+  } catch (e) {
+    return handleError(e, '登录失败')
+  }
+}
 
 /**
  * 发送对话消息到 Agent（多轮会话）。
@@ -27,6 +63,35 @@ export async function approveOperation(threadId: string, approved: boolean): Pro
     return data
   } catch (e) {
     return handleError(e, '审批操作失败')
+  }
+}
+
+/** 列出当前用户全部会话（服务端置顶优先，其次按最后活跃倒序）。 */
+export async function listThreads(): Promise<ThreadOut[]> {
+  try {
+    const { data } = await agentClient.get<ThreadOut[]>('/threads')
+    return data
+  } catch (e) {
+    return handleError(e, '获取会话列表失败')
+  }
+}
+
+/** 改名 / 置顶会话（title 与 pinned 至少传一个）。 */
+export async function updateThread(threadId: string, patch: UpdateThreadRequest): Promise<ThreadOut> {
+  try {
+    const { data } = await agentClient.patch<ThreadOut>(`/threads/${encodeURIComponent(threadId)}`, patch)
+    return data
+  } catch (e) {
+    return handleError(e, '更新会话失败')
+  }
+}
+
+/** 删除会话（连带服务端对话快照 checkpoints）。 */
+export async function deleteThread(threadId: string): Promise<void> {
+  try {
+    await agentClient.delete<DeleteThreadResponse>(`/threads/${encodeURIComponent(threadId)}`)
+  } catch (e) {
+    return handleError(e, '删除会话失败')
   }
 }
 

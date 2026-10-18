@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveOperation, sendChat } from '@/api/agent'
+import { approveOperation, deleteThread, listThreads, sendChat, updateThread } from '@/api/agent'
 import { ApiError } from '@/api/client'
-import type { ApprovalPayload, ChatResponse } from '@/api/types'
+import type { ApprovalPayload, ChatResponse, ThreadOut } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
 
-/** 会话条目（新建但未发送时 currentSessionId 为 null，不入列表） */
+/** 会话条目（新建但未发送时 currentSessionId 为 null，不入列表）。
+ *  会话元数据（标题/置顶/活跃时间）以 Agent 服务端 /threads 为准，本地仅缓存消息内容。 */
 interface Session {
   id: string
   title: string
@@ -30,11 +31,30 @@ interface ChatMessage {
   approvalResolved?: boolean
 }
 
-const SESSIONS_KEY = 'prf_sessions'
-
 // ---------- 会话列表 ----------
 const sessions = ref<Session[]>([])
 const currentSessionId = ref<string | null>(null)
+
+/** 把后端线程转换为前端会话条目（标题为空时用占位文案）。 */
+function toSession(t: ThreadOut): Session {
+  const updatedAt = new Date(t.updated_at).getTime() || Date.now()
+  return {
+    id: t.thread_id,
+    title: t.title || '新会话',
+    updatedAt,
+    pinned: t.pinned,
+    pinnedAt: t.pinned ? updatedAt : undefined,
+  }
+}
+
+/** 从 Agent 拉取当前用户的会话列表（服务端为会话元数据唯一来源）。 */
+async function syncSessions() {
+  try {
+    sessions.value = (await listThreads()).map(toSession)
+  } catch {
+    /* 列表拉取失败不阻塞；发消息/操作时会带出错误提示 */
+  }
+}
 
 // ---------- 当前会话消息 ----------
 const messages = ref<ChatMessage[]>([])
@@ -113,18 +133,6 @@ onBeforeUnmount(() => {
   stopResize()
 })
 
-function loadSessions(): Session[] {
-  try {
-    const raw = localStorage.getItem(SESSIONS_KEY)
-    return raw ? (JSON.parse(raw) as Session[]) : []
-  } catch {
-    return []
-  }
-}
-function persistSessions() {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.value))
-}
-
 function msgKey(id: string) {
   return `prf_msgs_${id}`
 }
@@ -149,7 +157,7 @@ function newSession() {
   input.value = ''
 }
 
-function switchSession(id: string) {
+async function switchSession(id: string) {
   if (currentSessionId.value === id) return
   if (currentSessionId.value) persistMessages()
   currentSessionId.value = id
@@ -159,7 +167,7 @@ function switchSession(id: string) {
 
 async function deleteSession(s: Session) {
   try {
-    await ElMessageBox.confirm(`删除会话「${s.title}」？本地的对话记录将一并清除。`, '删除会话', {
+    await ElMessageBox.confirm(`删除会话「${s.title}」？服务端对话快照与本地缓存将一并清除。`, '删除会话', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
@@ -167,9 +175,14 @@ async function deleteSession(s: Session) {
   } catch {
     return
   }
+  try {
+    await deleteThread(s.id)
+  } catch (e) {
+    ElMessage.error((e as ApiError).message)
+    return
+  }
   sessions.value = sessions.value.filter((x) => x.id !== s.id)
   localStorage.removeItem(msgKey(s.id))
-  persistSessions()
   if (currentSessionId.value === s.id) newSession()
 }
 
@@ -190,18 +203,20 @@ const sessionGroups = computed<Array<{ type: 'pinned-title' | 'divider' | 'sessi
   return groups
 })
 
-function togglePin(s: Session) {
-  if (s.pinned) {
-    s.pinned = false
-    s.pinnedAt = undefined
-  } else {
-    s.pinned = true
-    s.pinnedAt = Date.now()
+async function togglePin(s: Session) {
+  const pinned = !s.pinned
+  try {
+    await updateThread(s.id, { pinned })
+  } catch (e) {
+    ElMessage.error((e as ApiError).message)
+    return
   }
-  persistSessions()
+  s.pinned = pinned
+  s.pinnedAt = pinned ? Date.now() : undefined
 }
 
 async function renameSession(s: Session) {
+  let title = ''
   try {
     const { value } = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
       inputValue: s.title,
@@ -210,12 +225,19 @@ async function renameSession(s: Session) {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
     })
-    const title = (value ?? '').trim().slice(0, 24)
-    if (title) s.title = title
-    persistSessions()
+    title = (value ?? '').trim().slice(0, 24)
   } catch {
     // 用户取消
+    return
   }
+  if (!title) return
+  try {
+    await updateThread(s.id, { title })
+  } catch (e) {
+    ElMessage.error((e as ApiError).message)
+    return
+  }
+  s.title = title
 }
 
 function handleMenu(command: string | number | object, s: Session) {
@@ -255,7 +277,19 @@ function scrollToBottom() {
 function registerSession(threadId: string) {
   const title = (messages.value[0]?.content || '新会话').slice(0, 24)
   sessions.value.unshift({ id: threadId, title, updatedAt: Date.now() })
-  persistSessions()
+  // 新会话服务端标题默认为空，用首条消息同步标题（失败不影响本地展示）
+  updateThread(threadId, { title }).catch(() => {
+    /* ignore */
+  })
+}
+
+/** 活跃会话置顶到普通会话组的最近位置（服务端按 updated_at 倒序，本地近似同步）。 */
+function bumpSession(id: string) {
+  const s = sessions.value.find((x) => x.id === id)
+  if (!s) return
+  s.updatedAt = Date.now()
+  sessions.value = sessions.value.filter((x) => x.id !== id)
+  sessions.value.unshift(s)
 }
 
 function handleChatResponse(res: ChatResponse, pendingMsg: ChatMessage) {
@@ -268,6 +302,9 @@ function handleChatResponse(res: ChatResponse, pendingMsg: ChatMessage) {
   } else if (res.status === 'awaiting_approval') {
     pendingMsg.approval = res.approval_payload ?? null
     pendingMsg.content = ''
+  }
+  if (res.thread_id) {
+    bumpSession(res.thread_id)
   }
 }
 
@@ -399,7 +436,7 @@ defineExpose({ sampleQuestions, askSample })
 watch(messages, () => scrollToBottom(), { deep: false })
 
 onMounted(() => {
-  sessions.value = loadSessions()
+  syncSessions()
 })
 </script>
 
@@ -495,6 +532,9 @@ onMounted(() => {
             <h2>论文 RAG 助手</h2>
             <p>基于你的私有论文库提问，Agent 会检索相关片段并综合回答</p>
           </div>
+          <p v-if="currentSessionId" class="hero-note">
+            此会话历史保存在服务端，当前浏览器无本地缓存；继续提问将从服务端续接上下文
+          </p>
 
           <!-- 中央输入框 -->
           <div class="hero-input">
@@ -862,6 +902,11 @@ onMounted(() => {
   margin: 0;
   font-size: 14px;
   color: var(--prf-text-3);
+}
+.hero-note {
+  margin: -16px 0 0;
+  font-size: 12px;
+  color: var(--prf-text-4);
 }
 
 /* 中央输入框卡片 */
