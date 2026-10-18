@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import type { UploadUserFile } from 'element-plus'
 import { deleteDocument, getDocument, listDocuments, rechunkDocument, uploadDocuments } from '@/api/rag'
 import { ApiError } from '@/api/client'
@@ -10,6 +10,7 @@ const docs = ref<RagDocument[]>([])
 const loading = ref(false)
 const uploading = ref(false)
 const uploadList = ref<UploadUserFile[]>([])
+const tableRef = ref<TableInstance>()
 
 // ---------- 详情 / 重分块对话框 ----------
 const detailDoc = ref<RagDocument | null>(null)
@@ -36,6 +37,40 @@ async function refresh() {
     ElMessage.error((e as ApiError).message)
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * 拖拽调整列宽后的钳制：
+ * 1. 下限：不得窄于该列 min-width（避免创建时间被截断、操作按钮换行）；
+ * 2. 上限：整表不产生横向溢出，防止把别的列挤出可视区（如把"大小"拉宽后"创建时间"消失）。
+ * EP 已在鼠标松开时把拖拽宽度写进 column.width，这里覆盖后随后的 scheduleLayout 会按此值重新布局。
+ */
+function onHeaderDragEnd(
+  newWidth: number,
+  _oldWidth: number,
+  column: { label?: string; minWidth?: number | string; width?: number; realWidth?: number },
+) {
+  const min = Number(column.minWidth) || 0
+  let width = newWidth
+  if (min) width = Math.max(width, min)
+
+  const table: any = tableRef.value
+  if (table?.$el) {
+    // 可视宽度：优先取 EP 计算出的 body 宽度（已扣除纵向滚动条占位）
+    const available =
+      Number.parseFloat(String(table.bodyWidth?.value)) || (table.$el as HTMLElement).clientWidth - 16
+    // 其余列已占用的宽度（已拖成固定宽的取 width，弹性列取 minWidth）
+    const others = (table.store?.states.columns.value ?? [])
+      .filter((c: any) => c.label !== column.label)
+      .reduce((sum: number, c: any) => sum + (Number(c.width) || Number(c.minWidth) || 80), 0)
+    const max = available - others
+    width = Math.min(width, Math.max(max, min))
+  }
+
+  if (width !== newWidth) {
+    column.width = width
+    column.realWidth = width
   }
 }
 
@@ -152,7 +187,9 @@ function formatSize(bytes: number): string {
 function formatDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('zh-CN', { hour12: false })
+  const p = (n: number) => String(n).padStart(2, '0')
+  // 紧凑格式，避免在较窄列宽下被截断
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 onMounted(() => {
@@ -205,6 +242,7 @@ onBeforeUnmount(() => {
       <div class="table-head">
         <h3>文档列表</h3>
         <div class="table-tools">
+          <span class="resize-hint">拖拽表头可调整列宽</span>
           <el-tag v-if="inProgress" type="warning" effect="light" size="small">
             有文档正在处理，已开启自动刷新
           </el-tag>
@@ -215,9 +253,17 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <el-table v-loading="loading" :data="docs" empty-text="文档库为空，先上传几篇论文吧">
+      <el-table
+        ref="tableRef"
+        v-loading="loading"
+        :data="docs"
+        empty-text="文档库为空，先上传几篇论文吧"
+        border
+        allow-drag-last-column
+        @header-dragend="onHeaderDragEnd"
+      >
         <el-table-column label="文件名" prop="filename" min-width="240" show-overflow-tooltip />
-        <el-table-column label="状态" width="110">
+        <el-table-column label="状态" min-width="100" align="center">
           <template #default="{ row }">
             <el-tooltip v-if="row.status === 'failed' && row.error" :content="row.error" placement="top">
               <el-tag :type="statusTag(row.status).type" size="small">{{ statusTag(row.status).label }}</el-tag>
@@ -227,28 +273,30 @@ onBeforeUnmount(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="页数" prop="page_count" width="80" align="center" />
-        <el-table-column label="分块" prop="chunk_count" width="80" align="center" />
-        <el-table-column label="大小" width="110">
+        <el-table-column label="页数" prop="page_count" min-width="70" align="center" />
+        <el-table-column label="分块" prop="chunk_count" min-width="70" align="center" />
+        <el-table-column label="大小" min-width="100" align="center">
           <template #default="{ row }">{{ formatSize(row.size_bytes) }}</template>
         </el-table-column>
-        <el-table-column label="创建时间" width="170">
+        <el-table-column label="创建时间" min-width="160" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" align="center" fixed="right">
+        <el-table-column label="操作" width="260" min-width="260" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="openDetail(row)">
-              <el-icon><View /></el-icon>
-              <span>详情</span>
-            </el-button>
-            <el-button type="warning" link @click="openRechunk(row)">
-              <el-icon><RefreshRight /></el-icon>
-              <span>重分块</span>
-            </el-button>
-            <el-button type="danger" link @click="onDelete(row)">
-              <el-icon><Delete /></el-icon>
-              <span>删除</span>
-            </el-button>
+            <span class="action-btns">
+              <el-button type="primary" link @click="openDetail(row)">
+                <el-icon><View /></el-icon>
+                <span>详情</span>
+              </el-button>
+              <el-button type="warning" link @click="openRechunk(row)">
+                <el-icon><RefreshRight /></el-icon>
+                <span>重分块</span>
+              </el-button>
+              <el-button type="danger" link @click="onDelete(row)">
+                <el-icon><Delete /></el-icon>
+                <span>删除</span>
+              </el-button>
+            </span>
           </template>
         </el-table-column>
       </el-table>
@@ -354,8 +402,34 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
 }
+.resize-hint {
+  font-size: 12px;
+  color: var(--prf-text-4);
+}
 .table-card :deep(.el-table) {
   flex: 1;
+}
+.action-btns {
+  /* 三个操作按钮强制单行，避免列宽不足时换行挤压 */
+  white-space: nowrap;
+}
+
+/* 无框式表格：只在表头行保留分隔线，便于识别列边界和拖拽位置；数据行保持无框 */
+.table-card :deep(.el-table td.el-table__cell) {
+  border-right: none !important;
+  border-bottom: none !important;
+}
+/* 表头行：只保留竖线（列边界/拖拽位置），不要底部横线；加粗 + 加深色让列边界更清晰 */
+.table-card :deep(.el-table th.el-table__cell) {
+  border-right: 2px solid var(--el-border-color) !important;
+  border-bottom: none !important;
+}
+/* 隐藏外框线（保留 border 属性只是为了启用列宽拖拽） */
+.table-card :deep(.el-table--border:before),
+.table-card :deep(.el-table--border:after),
+.table-card :deep(.el-table--border .el-table__inner-wrapper:after),
+.table-card :deep(.el-table__inner-wrapper:before) {
+  display: none;
 }
 .hash-text {
   font-size: 12px;
