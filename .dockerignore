@@ -1,0 +1,10 @@
+# 排除：构建产物 / 依赖 / git / 本地配置
+node_modules/
+dist/
+.git/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+Agent.md
