@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { authToken, clearAuth } from './authState'
 
 /** 统一错误：从 Agent / RAG 的各种错误结构里提取可读 message。 */
@@ -64,13 +64,16 @@ export const ragClient = axios.create({
 })
 
 // ---------- 请求拦截器：注入凭证 ----------
-// Agent：JWT（Authorization: Bearer）
-agentClient.interceptors.request.use((config) => {
+// Agent 与 RAG（经 BFF 中转）都走 agent 网关，统一注入 JWT（Authorization: Bearer）
+function authInterceptor(config: InternalAxiosRequestConfig) {
   if (authToken.value) {
     config.headers['Authorization'] = `Bearer ${authToken.value}`
   }
   return config
-})
+}
+
+agentClient.interceptors.request.use(authInterceptor)
+ragClient.interceptors.request.use(authInterceptor)
 
 // ragClient 不再注入 X-API-Key / X-User-ID —— 全部由 Agent 转发层统一处理。
 
