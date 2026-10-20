@@ -131,6 +131,8 @@ async function submit() {
   border-radius: 16px;
   padding: 32px 32px 24px;
   box-shadow: var(--prf-shadow);
+  /* 整体上移一点，避免登录框在页面中感觉偏低 */
+  transform: translateY(-40px);
 }
 
 .login-brand {

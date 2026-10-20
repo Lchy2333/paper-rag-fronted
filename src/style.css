@@ -82,6 +82,9 @@
   --el-text-color-secondary: var(--prf-text-3);
   --el-text-color-placeholder: var(--prf-text-4);
   --el-text-color-disabled: var(--prf-text-4);
+  /* 加载遮罩（v-loading / ElLoading）：跟随页面背景，避免 EP 默认纯白遮罩与主题不符 */
+  --el-mask-color: color-mix(in srgb, var(--prf-bg) 88%, transparent);
+  --el-mask-color-extra-light: color-mix(in srgb, var(--prf-bg) 45%, transparent);
 }
 
 /* ========== 深色模式基础（默认强调色：紫色） ========== */
@@ -152,6 +155,9 @@ html.dark {
   --el-text-color-secondary: var(--prf-text-3);
   --el-text-color-placeholder: var(--prf-text-4);
   --el-text-color-disabled: var(--prf-text-4);
+  /* 加载遮罩（v-loading / ElLoading）：跟随页面背景，避免 EP 默认纯黑遮罩与主题不符 */
+  --el-mask-color: color-mix(in srgb, var(--prf-bg) 88%, transparent);
+  --el-mask-color-extra-light: color-mix(in srgb, var(--prf-bg) 45%, transparent);
 }
 
 /* ============================================================

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveOperation, deleteThread, listThreads, sendChat, updateThread } from '@/api/agent'
+import { approveOperation, cancelChat, deleteThread, listThreads, streamChat, updateThread } from '@/api/agent'
 import { ApiError } from '@/api/client'
-import type { ApprovalPayload, ChatResponse, ThreadOut } from '@/api/types'
+import type { ApprovalPayload, ThreadOut } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
 
 /** 会话条目（新建但未发送时 currentSessionId 为 null，不入列表）。
@@ -18,6 +18,12 @@ interface Session {
   pinnedAt?: number
 }
 
+/** 阶段进度行：done=false 表示正在进行（闪烁点），done=true 表示已完成（绿色对号） */
+interface StageItem {
+  label: string
+  done: boolean
+}
+
 /** 单条聊天消息 */
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -25,6 +31,10 @@ interface ChatMessage {
   pending?: boolean
   error?: boolean
   errorText?: string
+  /** 流式过程中的阶段进度行（如"正在检索论文库…""命中 5 条"） */
+  stages?: StageItem[]
+  /** 用户主动停止生成 */
+  cancelled?: boolean
   /** HITL 待审批操作载荷（仅 assistant 消息可能有） */
   approval?: ApprovalPayload | null
   /** 该审批是否已处理过 */
@@ -62,6 +72,10 @@ const input = ref('')
 const sending = ref(false)
 const approving = ref(false)
 const listEl = ref<HTMLElement | null>(null)
+
+// 正在生成的请求句柄：用于"停止"（abort 断开 + 后端置取消标记）
+const abortController = ref<AbortController | null>(null)
+const stopFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 // ---------- 侧边栏：宽度可拖拽调节 + 收起/展开 ----------
 const SIDEBAR_WIDTH_KEY = 'prf_sidebar_width'
@@ -252,9 +266,14 @@ const canSend = computed(() => {
   return text.length > 0 && !sending.value && !approving.value
 })
 
-function pushMessage(m: ChatMessage) {
+/** 把消息推进响应式数组，返回 Vue 的响应式代理对象。
+ * 注意：不能返回入参 m 本身——push 后 Vue 会把 m 包装成 Proxy，原对象仍是普通对象，
+ * 直接改它不会触发重绘（流式更新必须拿代理来改）。 */
+function pushMessage(m: ChatMessage): ChatMessage {
   messages.value.push(m)
+  const proxy = messages.value[messages.value.length - 1]
   scrollToBottom()
+  return proxy
 }
 
 /** 从最新往前找第一条未处理的审批卡 */
@@ -292,33 +311,91 @@ function bumpSession(id: string) {
   sessions.value.unshift(s)
 }
 
-function handleChatResponse(res: ChatResponse, pendingMsg: ChatMessage) {
-  pendingMsg.pending = false
-  pendingMsg.error = false
-  pendingMsg.errorText = undefined
-
-  if (res.status === 'ok') {
-    pendingMsg.content = res.reply ?? ''
-  } else if (res.status === 'awaiting_approval') {
-    pendingMsg.approval = res.approval_payload ?? null
-    pendingMsg.content = ''
-  }
-  if (res.thread_id) {
-    bumpSession(res.thread_id)
+/** 把所有阶段标记为已完成（全部变绿色对号、停止闪烁）。 */
+function markStagesDone(msg: ChatMessage) {
+  if (msg.stages) {
+    for (const s of msg.stages) s.done = true
   }
 }
 
-/** 向 Agent 请求一次回复并更新 pendingMsg（sendMessage 与 regenerate 共用） */
+/** 向 Agent 请求一次回复并更新 pendingMsg（sendMessage 与 regenerate 共用）。
+ * 走 SSE 流式：阶段进度 → 检索中 → 逐字回答；审批挂起 / 失败 / 用户停止也在此收敛。 */
 async function requestReply(text: string, pendingMsg: ChatMessage) {
   sending.value = true
+  const wasNew = currentSessionId.value === null
+  // 新建本次请求的取消句柄：停止按钮用它 abort + 后端置位
+  const controller = new AbortController()
+  abortController.value = controller
   try {
-    const res = await sendChat(text, currentSessionId.value)
-    // 新会话：拿到 thread_id 后注册会话条目，并把草稿消息落到该会话下
-    if (currentSessionId.value === null && res.thread_id) {
-      currentSessionId.value = res.thread_id
-      registerSession(res.thread_id)
-    }
-    handleChatResponse(res, pendingMsg)
+    await streamChat(
+      text,
+      currentSessionId.value,
+      {
+        // 会话 ID（最先到）：新会话时前端据此才拿到 thread_id，才能调用取消
+        onSession(tid) {
+          if (wasNew && tid) {
+            currentSessionId.value = tid
+            registerSession(tid)
+          }
+        },
+        // 阶段进度：累积成状态行展示（不阻塞回答内容）
+        onStage(data) {
+          const label = String(data.label ?? '').trim()
+          if (label) {
+            if (!pendingMsg.stages) pendingMsg.stages = []
+            // 新阶段开始 → 之前的阶段都算"已完成"（变成对号）
+            for (const s of pendingMsg.stages) s.done = true
+            pendingMsg.stages.push({ label, done: false })
+            scrollToBottom()
+          }
+        },
+        // LLM 逐字输出：追加到内容，进入"打字机"状态；生成开始即所有阶段完成
+        onToken(delta) {
+          if (delta) {
+            pendingMsg.pending = false
+            pendingMsg.error = false
+            pendingMsg.errorText = undefined
+            markStagesDone(pendingMsg)
+            pendingMsg.content += delta
+            scrollToBottom()
+          }
+        },
+        // HITL 挂起：展示审批卡
+        onApproval(payload, tid) {
+          if (wasNew && tid) {
+            currentSessionId.value = tid
+            registerSession(tid)
+          }
+          pendingMsg.pending = false
+          markStagesDone(pendingMsg)
+          pendingMsg.approval = payload
+          scrollToBottom()
+        },
+        // 用户主动停止：标记"已停止生成"
+        onCancel() {
+          pendingMsg.pending = false
+          pendingMsg.error = false
+          pendingMsg.errorText = undefined
+          pendingMsg.cancelled = true
+          markStagesDone(pendingMsg)
+          scrollToBottom()
+        },
+        // 正常跑完
+        onDone(tid) {
+          if (wasNew && tid) {
+            currentSessionId.value = tid
+            registerSession(tid)
+          }
+          pendingMsg.pending = false
+          pendingMsg.error = false
+          pendingMsg.errorText = undefined
+          markStagesDone(pendingMsg)
+          bumpSession(tid)
+          scrollToBottom()
+        },
+      },
+      controller.signal,
+    )
     persistMessages()
   } catch (e) {
     const err = e as ApiError
@@ -340,7 +417,36 @@ async function requestReply(text: string, pendingMsg: ChatMessage) {
     persistMessages()
   } finally {
     sending.value = false
+    // 清理本次请求的取消句柄与兜底定时器
+    if (stopFallbackTimer.value) {
+      clearTimeout(stopFallbackTimer.value)
+      stopFallbackTimer.value = null
+    }
+    abortController.value = null
     scrollToBottom()
+  }
+}
+
+/** 用户点击"停止"：通知后端置位取消标记 + 断开连接，前端标记"已停止生成"。 */
+async function stopGeneration() {
+  if (!sending.value) return
+  const controller = abortController.value
+  // 1) 先让后端知道要停（后端在下一个 token/工具边界停下，发 event: cancel）
+  if (currentSessionId.value) {
+    cancelChat(currentSessionId.value).catch(() => {
+      /* 失败则靠下面的 abort 兜底 */
+    })
+  }
+  // 2) 兜底：后端若迟迟不回应（如卡在长工具调用），3 秒后强制断开
+  if (controller && !stopFallbackTimer.value) {
+    stopFallbackTimer.value = setTimeout(() => {
+      controller.abort()
+      stopFallbackTimer.value = null
+    }, 3000)
+  }
+  // 若连 thread_id 都没有（session 事件未到），只能立即断开
+  if (!currentSessionId.value && controller) {
+    controller.abort()
   }
 }
 
@@ -350,8 +456,8 @@ async function sendMessage() {
   input.value = ''
 
   pushMessage({ role: 'user', content: text })
-  const pendingMsg: ChatMessage = { role: 'assistant', content: '', pending: true }
-  pushMessage(pendingMsg)
+  // 用 pushMessage 返回的响应式代理，流式回调改它才能触发逐字重绘
+  const pendingMsg = pushMessage({ role: 'assistant', content: '', pending: true })
 
   await requestReply(text, pendingMsg)
 }
@@ -381,10 +487,10 @@ async function regenerate(m: ChatMessage) {
     ElMessage.warning('没有可重新生成的上下文')
     return
   }
-  // 移除当前回复，原地插入待生成消息
+  // 移除当前回复，原地插入待生成消息；从响应式数组里取回代理对象供流式回调修改
   messages.value.splice(idx, 1)
-  const pendingMsg: ChatMessage = { role: 'assistant', content: '', pending: true }
-  messages.value.splice(idx, 0, pendingMsg)
+  messages.value.splice(idx, 0, { role: 'assistant', content: '', pending: true })
+  const pendingMsg = messages.value[idx]
   scrollToBottom()
   await requestReply(userText, pendingMsg)
 }
@@ -577,9 +683,20 @@ onMounted(() => {
                   <span class="assistant-label">论文 RAG 助手</span>
                 </div>
 
+                <div v-if="m.stages && m.stages.length" class="msg-stages">
+                  <div v-for="(s, j) in m.stages" :key="j" class="msg-stage" :class="{ done: s.done }">
+                    <span v-if="s.done" class="stage-check">✓</span>
+                    <span v-else class="stage-dot"></span>
+                    <span>{{ s.label }}</span>
+                  </div>
+                </div>
+
                 <div v-if="m.pending" class="msg-pending">
                   <el-icon class="is-loading"><Loading /></el-icon>
                   <span>思考中…</span>
+                </div>
+                <div v-else-if="m.cancelled" class="msg-cancelled">
+                  <span>已停止生成</span>
                 </div>
 
                 <template v-else>
@@ -643,7 +760,21 @@ onMounted(() => {
                 class="chat-textarea"
                 @keydown.enter.exact.prevent="sendMessage"
               />
+              <!-- 生成中：显示"停止"按钮，可随时中断 -->
               <el-button
+                v-if="sending"
+                type="danger"
+                plain
+                circle
+                class="chat-send stop-btn"
+                title="停止生成"
+                :disabled="!sending"
+                @click="stopGeneration"
+              >
+                <el-icon :size="16"><Close /></el-icon>
+              </el-button>
+              <el-button
+                v-else
                 type="primary"
                 circle
                 class="chat-send"
@@ -651,8 +782,7 @@ onMounted(() => {
                 :disabled="!canSend"
                 @click="sendMessage"
               >
-                <el-icon v-if="sending" class="is-loading" :size="22"><Loading /></el-icon>
-                <el-icon v-else :size="16"><Promotion /></el-icon>
+                <el-icon :size="16"><Promotion /></el-icon>
               </el-button>
             </div>
             <p class="input-hint">内容由 AI 生成，仅供论文检索与研究参考</p>
@@ -868,7 +998,7 @@ onMounted(() => {
   align-items: center;
   gap: 28px;
   /* 空会话整体略微上移，视觉更居中 */
-  transform: translateY(-40px);
+  transform: translateY(-64px);
 }
 
 /* ---------- 空会话欢迎 ---------- */
@@ -1018,6 +1148,72 @@ onMounted(() => {
   gap: 8px;
   color: var(--prf-text-3);
   padding: 8px 0;
+}
+.msg-cancelled {
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--prf-text-3);
+}
+.msg-cancelled span::before {
+  content: '■';
+  margin-right: 6px;
+  color: var(--prf-danger);
+  font-size: 10px;
+}
+
+/* 流式阶段进度行：检索中 / 命中 N 条 等 */
+.msg-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: var(--prf-surface-2);
+  border: 1px solid var(--prf-border);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--prf-text-3);
+}
+.msg-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+/* 进行中的阶段：闪烁圆点 */
+.stage-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--prf-primary);
+  flex-shrink: 0;
+  animation: prf-stage-blink 1s ease-in-out infinite;
+}
+/* 已完成的阶段：绿色对号（不再闪烁） */
+.stage-check {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--prf-success);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.msg-stage.done {
+  color: var(--prf-text-2);
+}
+@keyframes prf-stage-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 /* 操作按钮：悬停显示 */
@@ -1259,6 +1455,17 @@ onMounted(() => {
   width: 40px;
   height: 40px;
   padding: 0;
+}
+.chat-send.stop-btn {
+  /* 生成时替换发送按钮（v-if/v-else 互斥），同一位置显示停止 */
+  background: var(--prf-danger-bg, rgba(245, 108, 108, 0.12));
+  border-color: var(--prf-danger);
+  color: var(--prf-danger);
+}
+.chat-send.stop-btn:hover {
+  background: var(--prf-danger);
+  border-color: var(--prf-danger);
+  color: #fff;
 }
 .input-hint {
   margin: 8px 0 0;
