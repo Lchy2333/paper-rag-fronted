@@ -1,7 +1,8 @@
-import { agentClient, agentHealthClient, handleError } from './client'
-import { setAuth } from './authState'
+import { agentClient, agentHealthClient, ApiError, handleError } from './client'
+import { authToken, setAuth } from './authState'
 import type {
   ApproveResponse,
+  ApprovalPayload,
   ChatResponse,
   DeleteThreadResponse,
   ThreadOut,
@@ -49,6 +50,124 @@ export async function sendChat(query: string, threadId?: string | null): Promise
     return data
   } catch (e) {
     return handleError(e, '发送消息失败')
+  }
+}
+
+/**
+ * SSE 流式对话（POST /api/chat/stream）。
+ * 后端按事件协议实时推送：session（会话ID）/ stage（阶段进度）/ token（逐字）/
+ * approval（HITL 挂起）/ cancel（用户停止）/ done / error。
+ * 这里用 fetch + ReadableStream 逐事件解析，边收边回调，让 UI 有"打字机 + 进度"效果。
+ */
+export interface StreamChatHandlers {
+  /** 会话 ID（最先到达；新会话时前端据此才拿到 thread_id，才能调用取消） */
+  onSession: (threadId: string) => void
+  /** 阶段进度（如"正在检索论文库…""检索完成 · 命中 5 条"） */
+  onStage: (data: Record<string, unknown>) => void
+  /** 最终回答的 token 增量 */
+  onToken: (delta: string) => void
+  /** 图挂起等待审批（HITL） */
+  onApproval: (payload: ApprovalPayload | null, threadId: string) => void
+  /** 用户主动停止（POST /chat/cancel 触发，或本地 abort 兜底） */
+  onCancel: () => void
+  /** 正常跑完 */
+  onDone: (threadId: string) => void
+}
+
+export async function streamChat(
+  query: string,
+  threadId: string | null,
+  handlers: StreamChatHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken.value ? { Authorization: `Bearer ${authToken.value}` } : {}),
+      },
+      body: JSON.stringify({ query, thread_id: threadId ?? null }),
+      signal,
+    })
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return // 用户主动停止，正常结束
+    throw new ApiError('无法连接后端服务，请确认 Agent 服务已启动')
+  }
+
+  // 非 200（如 409 待审批 / 403 / 404）→ 后端返回 JSON 错误体，直接抛
+  if (!res.ok) {
+    let message = '发送消息失败'
+    try {
+      const body = (await res.json()) as { detail?: unknown; message?: unknown }
+      if (typeof body.detail === 'string') message = body.detail
+      else if (typeof body.message === 'string') message = body.message
+    } catch {
+      /* 非 JSON 错误体忽略 */
+    }
+    throw new ApiError(message, res.status)
+  }
+
+  // 解析 SSE 流：event: X 行 + data: {...} 行 + 空行分隔
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let evt = ''
+  while (true) {
+    let value: Uint8Array | undefined
+    let done = false
+    try {
+      const r = await reader.read()
+      done = r.done
+      value = r.value
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') {
+        handlers.onCancel() // 本地 abort 兜底 → 也标记"已停止生成"
+        break
+      }
+      throw e
+    }
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let sep = buffer.indexOf('\n\n')
+    while (sep >= 0) {
+      const block = buffer.slice(0, sep)
+      buffer = buffer.slice(sep + 2)
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) evt = line.slice(6).trim()
+        else if (line.startsWith('data:')) {
+          let data: Record<string, unknown>
+          try {
+            data = JSON.parse(line.slice(5).trim())
+          } catch {
+            continue
+          }
+          if (evt === 'session') handlers.onSession(String(data.thread_id ?? ''))
+          else if (evt === 'stage') handlers.onStage(data)
+          else if (evt === 'token') handlers.onToken(String(data.delta ?? ''))
+          else if (evt === 'approval')
+            handlers.onApproval((data.approval_payload as ApprovalPayload | null) ?? null, String(data.thread_id ?? ''))
+          else if (evt === 'cancel') handlers.onCancel()
+          else if (evt === 'done') handlers.onDone(String(data.thread_id ?? ''))
+          else if (evt === 'error') {
+            const msg = typeof data.message === 'string' ? data.message : '请求失败'
+            throw new ApiError(msg, res.status)
+          }
+        }
+      }
+      evt = ''
+      sep = buffer.indexOf('\n\n')
+    }
+  }
+}
+
+/** 中断指定会话的生成（POST /api/chat/cancel）。后端会在下一个 token/工具边界停下。 */
+export async function cancelChat(threadId: string): Promise<void> {
+  try {
+    await agentClient.post('/chat/cancel', { thread_id: threadId })
+  } catch (e) {
+    return handleError(e, '停止失败')
   }
 }
 

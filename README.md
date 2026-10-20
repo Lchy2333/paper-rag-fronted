@@ -13,7 +13,7 @@
 | 路由 | 页面 | 说明 |
 |---|---|---|
 | `/login` | 登录 / 注册页 | 注册或登录获取 JWT；会话与文档按用户隔离 |
-| `/chat` | 对话页 | 左侧会话列表（**同步后端 `/threads`**：置顶 / 改名 / 删除）+ 主聊天区；多轮会话（`thread_id`）；HITL 危险操作审批（允许/拒绝） |
+| `/chat` | 对话页 | 左侧会话列表（**同步后端 `/threads`**：置顶 / 改名 / 删除）+ 主聊天区；多轮会话（`thread_id`）；**SSE 流式输出**（阶段进度 + 逐字打字机 + 随时停止）；HITL 危险操作审批（允许/拒绝） |
 | `/documents` | 文档库页 | PDF 多文件上传（异步解析）、文档列表、状态轮询、详情、**重分块**、删除 |
 
 ## 对接架构
@@ -91,7 +91,9 @@ src/
 |---|---|
 | `POST /api/auth/register` | `register()` |
 | `POST /api/auth/login` | `login()`（自动写入凭证） |
-| `POST /api/chat` | `sendChat()` |
+| `POST /api/chat` | `sendChat()`（一次性，兼容） |
+| `POST /api/chat/stream` | `streamChat()`（**SSE 流式**：session/stage/token/approval/cancel/done/error 回调） |
+| `POST /api/chat/cancel` | `cancelChat()`（**停止生成**，与停止按钮/AbortController 配合） |
 | `POST /api/approve` | `approveOperation()` |
 | `GET /api/threads` | `listThreads()` |
 | `PATCH /api/threads/:id` | `updateThread()` |
@@ -112,7 +114,7 @@ src/
 
 ## 已知边界 / 后续方向
 
-- Agent 流式输出（SSE）上线后，对话页可接入打字机效果（目前为一次性返回）。
+- **流式输出 ✅ 已接入（2026-10）**：对话页走 `/api/chat/stream`（`fetch` + `ReadableStream` 逐事件解析）——阶段进度行（进行中闪烁点 / 完成变绿色对号）+ 逐字打字机 + 红色停止按钮（`/api/chat/cancel` + 3s 兜底 abort）。已修复两个关键坑：① `pushMessage` 必须返回 Vue 响应式代理（否则流式回调改原始对象不触发重绘，内容一次性出现）；② `nginx.conf` `/api/` 需关 `proxy_buffering`（否则 SSE 被缓冲、失去逐字效果）。
 - Agent 未提供"读取会话历史消息"的端点：切换会话时消息内容取本地缓存（`localStorage`），换浏览器/清缓存后仅显示"服务端续接"提示，但继续提问仍会正确续接服务端上下文。
 - 文档删除已改为经 Agent 转发 + `audit_logs` 留痕（前端确认框 + Agent 审计）；Chat 场景删除仍走 Agent 的 HITL 审批。
 - `/api/v1/ask` 为 RAG 内部测试接口（仅管理员、全局检索），前端不暴露、也不经 Agent 转发。
