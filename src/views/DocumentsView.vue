@@ -29,14 +29,18 @@ const inProgress = computed(() =>
   docs.value.some((d) => d.status === 'pending' || d.status === 'processing'),
 )
 
-async function refresh() {
-  loading.value = true
+/** 刷新文档列表。silent=true 用于后台自动轮询：只更新数据，
+ *  不触发按钮/表格 loading，避免处理期间每 5 秒闪一次；
+ *  手动点击"刷新"或上传/删除后仍保留 loading 反馈。 */
+async function refresh(opts?: { silent?: boolean }) {
+  const silent = opts?.silent
+  if (!silent) loading.value = true
   try {
     docs.value = await listDocuments()
   } catch (e) {
-    ElMessage.error((e as ApiError).message)
+    if (!silent) ElMessage.error((e as ApiError).message)
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -195,7 +199,7 @@ function formatDate(iso: string): string {
 onMounted(() => {
   refresh()
   timer = window.setInterval(() => {
-    if (inProgress.value) refresh()
+    if (inProgress.value) refresh({ silent: true })
   }, 5000)
 })
 
