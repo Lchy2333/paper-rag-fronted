@@ -11,6 +11,18 @@
 :root {
   color-scheme: light;
 
+  /* --- 字体与圆角体系 --- */
+  --prf-font-sans:
+    'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', Roboto, sans-serif;
+  --prf-font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --prf-radius-xs: 6px;
+  --prf-radius-sm: 8px;
+  --prf-radius-md: 12px;
+  --prf-radius-lg: 16px;
+  --prf-radius-xl: 22px;
+  --prf-ring: 0 0 0 3px color-mix(in srgb, var(--prf-primary) 18%, transparent);
+
   /* --- 强调色：紫色 --- */
   --prf-primary: #4f6ef7;
   --prf-primary-2: #7b5cf0;
@@ -28,39 +40,44 @@
   --el-color-primary-dark-2: color-mix(in srgb, var(--prf-primary) 80%, #000);
 
   /* --- 紫色页面着色：背景 / 表面 / 边框 / 代码 --- */
-  --prf-bg: #f5f4fb;
+  --prf-bg: #f6f6fa;
   --prf-surface: #ffffff;
-  --prf-surface-2: #f6f5fc;
-  --prf-hover: #eef1fb;
-  --prf-border: #e6e6f2;
-  --prf-border-strong: #d6d7ea;
-  --prf-code-bg: #f6f7fd;
+  --prf-surface-2: #f8f8fc;
+  --prf-hover: #eef0f7;
+  --prf-border: #e8e9f1;
+  --prf-border-strong: #d9dbe7;
+  --prf-code-bg: #f5f6fb;
   --prf-code-text: #6d5bd0;
 
   /* --- 语义色（跟随深浅模式，不随强调色） --- */
-  --prf-danger: #f56c6c;
-  --prf-danger-bg: #fef0f0;
-  --prf-danger-border: #fde2e2;
-  --prf-success: #67c23a;
-  --prf-warning-bg: #fdf6ec;
-  --prf-warning-border: #f3d19e;
+  --prf-danger: #f04438;
+  --prf-danger-bg: #fef1f0;
+  --prf-danger-border: #fbdcd9;
+  --prf-success: #12b76a;
+  --prf-warning: #e7a21a;
+  --prf-warning-bg: #fdf7ec;
+  --prf-warning-border: #f2dfb8;
 
   /* --- 文本（保持中性以保证对比度） --- */
-  --prf-text-1: #1f2329;
-  --prf-text-2: #4e5969;
-  --prf-text-3: #86909c;
-  --prf-text-4: #c0c4cc;
+  --prf-text-1: #16181d;
+  --prf-text-2: #4a4f59;
+  --prf-text-3: #858b97;
+  --prf-text-4: #b6bbc6;
 
   /* --- 阴影 --- */
-  --prf-shadow-sm: 0 1px 2px rgba(31, 35, 41, 0.04);
-  --prf-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
-  --prf-shadow-lg: 0 8px 28px rgba(31, 35, 41, 0.1);
+  --prf-shadow-sm: 0 1px 2px rgba(16, 18, 23, 0.04);
+  --prf-shadow: 0 1px 2px rgba(16, 18, 23, 0.04), 0 10px 28px -16px rgba(16, 18, 23, 0.22);
+  --prf-shadow-lg: 0 2px 4px rgba(16, 18, 23, 0.04), 0 20px 56px -20px rgba(16, 18, 23, 0.28);
 
   /* --- 滚动条 --- */
-  --prf-scrollbar: #c9cdd6;
-  --prf-scrollbar-hover: #a9aeb8;
+  --prf-scrollbar: #d3d6df;
+  --prf-scrollbar-hover: #b4b9c6;
 
   /* --- 映射到 Element Plus 组件变量（随上面 --prf-* 自动换肤） --- */
+  --el-border-radius-base: 9px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 999px;
+  --el-font-family: var(--prf-font-sans);
   --el-bg-color: var(--prf-surface);
   --el-bg-color-page: var(--prf-bg);
   --el-bg-color-overlay: var(--prf-surface);
@@ -107,31 +124,34 @@ html.dark {
   --el-color-primary-dark-2: color-mix(in srgb, var(--prf-primary) 80%, #000);
 
   /* --- 紫色页面着色（深色） --- */
-  --prf-bg: #10101a;
-  --prf-surface: #191926;
-  --prf-surface-2: #20202f;
-  --prf-hover: #262638;
-  --prf-border: #2b2b3d;
-  --prf-border-strong: #38384e;
-  --prf-code-bg: #0d0d16;
+  --prf-bg: #0c0d12;
+  --prf-surface: #14161c;
+  --prf-surface-2: #1a1d25;
+  --prf-hover: #21252f;
+  --prf-border: #262a35;
+  --prf-border-strong: #333845;
+  --prf-code-bg: #0a0b10;
   --prf-code-text: #9a8cff;
 
-  --prf-danger-bg: #3a1f24;
-  --prf-danger-border: #5a2c34;
-  --prf-warning-bg: #3a3018;
-  --prf-warning-border: #5a4a1e;
+  --prf-danger: #ff6b62;
+  --prf-danger-bg: #2c1a1a;
+  --prf-danger-border: #4a2626;
+  --prf-success: #32d583;
+  --prf-warning: #f5b544;
+  --prf-warning-bg: #2b2417;
+  --prf-warning-border: #4a3d1f;
 
-  --prf-text-1: #e8eaf0;
-  --prf-text-2: #c3c9d4;
-  --prf-text-3: #8b93a3;
-  --prf-text-4: #5b6373;
+  --prf-text-1: #eceef4;
+  --prf-text-2: #bcc2ce;
+  --prf-text-3: #838b9a;
+  --prf-text-4: #565e6d;
 
-  --prf-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --prf-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  --prf-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --prf-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --prf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -18px rgba(0, 0, 0, 0.8);
+  --prf-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 64px -24px rgba(0, 0, 0, 0.9);
 
-  --prf-scrollbar: #363e4d;
-  --prf-scrollbar-hover: #444e60;
+  --prf-scrollbar: #333947;
+  --prf-scrollbar-hover: #454d5f;
 
   /* --- 映射到 Element Plus 组件变量 --- */
   --el-bg-color: var(--prf-surface);
@@ -284,18 +304,76 @@ body,
 }
 
 body {
-  font-family:
-    'PingFang SC',
-    'Microsoft YaHei',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font-family: var(--prf-font-sans);
   background: var(--prf-bg);
   color: var(--prf-text-1);
+  font-size: 14px;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.022em;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--prf-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* ---------- 通用动效 ---------- */
+@keyframes prf-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes prf-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes prf-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--prf-success) 35%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 ::selection {
@@ -348,18 +426,127 @@ textarea:-webkit-autofill:active {
 
 /* 滚动条美化（跟随主题变量） */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--prf-scrollbar);
-  border-radius: 3px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--prf-scrollbar-hover);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ============================================================
+   Element Plus 全局精修
+   统一圆角、按钮重量、弹层阴影与表单项焦点反馈。
+   ============================================================ */
+.el-button {
+  font-weight: 500;
+  letter-spacing: 0;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+.el-button--primary {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--prf-primary) 28%, transparent);
+}
+.el-button--primary:hover {
+  box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--prf-primary) 45%, transparent);
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: var(--prf-radius-sm);
+  box-shadow: 0 0 0 1px var(--prf-border) inset;
+  transition: box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.el-input__wrapper:hover,
+.el-textarea__inner:hover {
+  box-shadow: 0 0 0 1px var(--prf-border-strong) inset;
+}
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--prf-primary) inset, var(--prf-ring) !important;
+}
+
+.el-tag {
+  border-radius: 999px;
+  font-weight: 500;
+  padding: 0 9px;
+}
+
+.el-dialog {
+  border-radius: var(--prf-radius-lg);
+  box-shadow: var(--prf-shadow-lg);
+  padding: 22px 24px 20px;
+}
+.el-dialog__header {
+  margin-right: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--prf-border);
+}
+.el-dialog__title {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.el-dialog__body {
+  padding: 18px 0 6px;
+}
+.el-dialog__footer {
+  padding-top: 14px;
+}
+
+.el-message-box {
+  border-radius: var(--prf-radius-md);
+  box-shadow: var(--prf-shadow-lg);
+  padding: 20px;
+}
+.el-message {
+  border-radius: 999px;
+  box-shadow: var(--prf-shadow);
+  border: 1px solid var(--prf-border);
+}
+
+.el-popper.is-light {
+  border-radius: var(--prf-radius-md);
+  border: 1px solid var(--prf-border);
+  box-shadow: var(--prf-shadow-lg);
+}
+.el-dropdown-menu {
+  padding: 4px;
+}
+.el-dropdown-menu__item {
+  border-radius: var(--prf-radius-xs);
+  font-size: 13px;
+}
+
+.el-table {
+  --el-table-border-color: var(--prf-border);
+  --el-table-header-text-color: var(--prf-text-3);
+  --el-table-text-color: var(--prf-text-2);
+  --el-table-row-hover-bg-color: var(--prf-surface-2);
+}
+
+.el-upload-dragger {
+  border-radius: var(--prf-radius-md);
+  border: 1px dashed var(--prf-border-strong);
+  background: var(--prf-surface-2);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.el-upload-dragger:hover {
+  border-color: var(--prf-primary);
+  background: var(--prf-active);
 }
 
 /* ============================================================

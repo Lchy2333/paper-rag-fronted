@@ -29,6 +29,9 @@ const inProgress = computed(() =>
   docs.value.some((d) => d.status === 'pending' || d.status === 'processing'),
 )
 
+/** 已就绪（可检索）文档数 */
+const readyCount = computed(() => docs.value.filter((d) => d.status === 'ready').length)
+
 /** 刷新文档列表。silent=true 用于后台自动轮询：只更新数据，
  *  不触发按钮/表格 loading，避免处理期间每 5 秒闪一次；
  *  手动点击"刷新"或上传/删除后仍保留 loading 反馈。 */
@@ -210,100 +213,136 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="docs-view">
-    <div class="docs-card upload-card">
-      <div class="upload-left">
-        <el-upload
-          v-model:file-list="uploadList"
-          drag
-          multiple
-          :auto-upload="false"
-          accept=".pdf"
-          :limit="20"
-        >
-          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-          <div class="el-upload__text">
-            拖拽 PDF 到此处，或<em>点击选择文件</em>
-          </div>
-          <template #tip>
-            <div class="el-upload__tip">支持多文件上传，仅限 PDF；上传后异步解析与向量化</div>
-          </template>
-        </el-upload>
-      </div>
-      <div class="upload-right">
-        <el-button
-          type="primary"
-          :loading="uploading"
-          :disabled="uploadList.length === 0"
-          @click="doUpload"
-        >
-          <el-icon><Upload /></el-icon>
-          <span>开始上传{{ uploadList.length ? `（${uploadList.length}）` : '' }}</span>
-        </el-button>
-      </div>
-    </div>
-
-    <div class="docs-card table-card">
-      <div class="table-head">
-        <h3>文档列表</h3>
-        <div class="table-tools">
-          <span class="resize-hint">拖拽表头可调整列宽</span>
-          <el-tag v-if="inProgress" type="warning" effect="light" size="small">
-            有文档正在处理，已开启自动刷新
-          </el-tag>
+    <div class="docs-inner">
+      <!-- 页面头 -->
+      <header class="page-head">
+        <div class="page-heading">
+          <span class="page-eyebrow">Knowledge Base</span>
+          <h1>文档库</h1>
+          <p>
+            上传 PDF 论文，系统会自动解析、切分并建立向量索引。当前共
+            <strong>{{ docs.length }}</strong> 篇，其中 <strong>{{ readyCount }}</strong> 篇可检索。
+          </p>
+        </div>
+        <div class="page-actions">
+          <span v-if="inProgress" class="processing-hint">
+            <span class="pulse-dot"></span>
+            处理中，自动刷新
+          </span>
           <el-button :loading="loading" @click="refresh">
             <el-icon><Refresh /></el-icon>
             <span>刷新</span>
           </el-button>
         </div>
-      </div>
+      </header>
 
-      <el-table
-        ref="tableRef"
-        v-loading="loading"
-        :data="docs"
-        empty-text="文档库为空，先上传几篇论文吧"
-        border
-        allow-drag-last-column
-        @header-dragend="onHeaderDragEnd"
-      >
-        <el-table-column label="文件名" prop="filename" min-width="240" show-overflow-tooltip />
-        <el-table-column label="状态" min-width="100" align="center">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.status === 'failed' && row.error" :content="row.error" placement="top">
-              <el-tag :type="statusTag(row.status).type" size="small">{{ statusTag(row.status).label }}</el-tag>
-            </el-tooltip>
-            <el-tag v-else :type="statusTag(row.status).type" size="small">
-              {{ statusTag(row.status).label }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="页数" prop="page_count" min-width="70" align="center" />
-        <el-table-column label="分块" prop="chunk_count" min-width="70" align="center" />
-        <el-table-column label="大小" min-width="100" align="center">
-          <template #default="{ row }">{{ formatSize(row.size_bytes) }}</template>
-        </el-table-column>
-        <el-table-column label="创建时间" min-width="160" align="center" show-overflow-tooltip>
-          <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="260" min-width="260" align="center" fixed="right">
-          <template #default="{ row }">
-            <span class="action-btns">
-              <el-button type="primary" link @click="openDetail(row)">
-                <el-icon><View /></el-icon>
-                <span>详情</span>
-              </el-button>
-              <el-button type="warning" link @click="openRechunk(row)">
-                <el-icon><RefreshRight /></el-icon>
-                <span>重分块</span>
-              </el-button>
-              <el-button type="danger" link @click="onDelete(row)">
-                <el-icon><Delete /></el-icon>
-                <span>删除</span>
-              </el-button>
+      <!-- 上传区 -->
+      <section class="upload-panel">
+        <div class="upload-left">
+          <el-upload
+            v-model:file-list="uploadList"
+            class="uploader"
+            drag
+            multiple
+            :auto-upload="false"
+            accept=".pdf"
+            :limit="20"
+          >
+            <el-icon class="upload-icon"><UploadFilled /></el-icon>
+            <div class="el-upload__text">
+              拖拽 PDF 到此处，或<em>点击选择文件</em>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip">支持多文件上传，仅限 PDF；上传后异步解析与向量化</div>
+            </template>
+          </el-upload>
+        </div>
+        <div class="upload-aside">
+          <h2>添加新的论文</h2>
+          <p>解析与向量化在后台进行，可继续使用其他功能；处理完成的文档会出现在下表并自动刷新状态。</p>
+          <div class="upload-actions">
+            <el-button
+              type="primary"
+              :loading="uploading"
+              :disabled="uploadList.length === 0"
+              @click="doUpload"
+            >
+              <el-icon><Upload /></el-icon>
+              <span>开始上传{{ uploadList.length ? `（${uploadList.length}）` : '' }}</span>
+            </el-button>
+            <span class="upload-count">
+              {{ uploadList.length ? `已选择 ${uploadList.length} 个文件` : '尚未选择文件' }}
             </span>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 文档列表 -->
+      <section class="table-panel">
+        <div class="table-head">
+          <h2>全部文档</h2>
+          <span class="resize-hint">拖拽表头可调整列宽</span>
+        </div>
+
+        <el-table
+          ref="tableRef"
+          v-loading="loading"
+          :data="docs"
+          empty-text="文档库为空，先上传几篇论文吧"
+          border
+          allow-drag-last-column
+          @header-dragend="onHeaderDragEnd"
+        >
+          <el-table-column label="文件名" prop="filename" min-width="240">
+            <template #default="{ row }">
+              <span class="file-cell" :title="row.filename">
+                <span class="file-badge"><el-icon><Document /></el-icon></span>
+                <span class="file-name">{{ row.filename }}</span>
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" min-width="100" align="center">
+            <template #default="{ row }">
+              <el-tooltip v-if="row.status === 'failed' && row.error" :content="row.error" placement="top">
+                <span class="status-pill" :class="`is-${statusTag(row.status).type}`">
+                  <span class="status-dot"></span>
+                  {{ statusTag(row.status).label }}
+                </span>
+              </el-tooltip>
+              <span v-else class="status-pill" :class="`is-${statusTag(row.status).type}`">
+                <span class="status-dot"></span>
+                {{ statusTag(row.status).label }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="页数" prop="page_count" min-width="70" align="center" />
+          <el-table-column label="分块" prop="chunk_count" min-width="70" align="center" />
+          <el-table-column label="大小" min-width="100" align="center">
+            <template #default="{ row }">{{ formatSize(row.size_bytes) }}</template>
+          </el-table-column>
+          <el-table-column label="创建时间" min-width="160" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="260" min-width="260" align="center" fixed="right">
+            <template #default="{ row }">
+              <span class="action-btns">
+                <el-button type="primary" link @click="openDetail(row)">
+                  <el-icon><View /></el-icon>
+                  <span>详情</span>
+                </el-button>
+                <el-button type="warning" link @click="openRechunk(row)">
+                  <el-icon><RefreshRight /></el-icon>
+                  <span>重分块</span>
+                </el-button>
+                <el-button type="danger" link @click="onDelete(row)">
+                  <el-icon><Delete /></el-icon>
+                  <span>删除</span>
+                </el-button>
+              </span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </section>
     </div>
 
     <!-- 文档详情对话框 -->
@@ -358,84 +397,305 @@ onBeforeUnmount(() => {
 .docs-view {
   height: 100%;
   overflow-y: auto;
-  padding: 20px;
+  padding: 28px 24px 36px;
+}
+.docs-inner {
+  width: 80%;
+  max-width: none;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 22px;
 }
 
-.docs-card {
-  background: var(--prf-surface);
-  border: 1px solid var(--prf-border);
-  border-radius: 12px;
-  padding: 16px 20px;
-  box-shadow: var(--prf-shadow-sm);
+/* ---------- 页面头 ---------- */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
 }
-
-.upload-card {
+.page-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--prf-text-4);
+}
+.page-heading h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: var(--prf-text-1);
+}
+.page-heading p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--prf-text-3);
+}
+.page-heading p strong {
+  font-weight: 600;
+  color: var(--prf-text-1);
+}
+.page-actions {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
+  padding-bottom: 3px;
 }
-.upload-left {
-  flex: 1;
+.processing-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--prf-warning) 74%, var(--prf-text-1));
 }
-.upload-right {
-  flex-shrink: 0;
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--prf-warning);
+  animation: docs-pulse 1.4s ease-in-out infinite;
+}
+@keyframes docs-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }
 
-.table-card {
-  flex: 1;
-  min-height: 0;
+/* ---------- 上传区 ---------- */
+.upload-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 26px;
+  padding: 22px;
+  background: var(--prf-surface);
+  border: 1px solid var(--prf-border);
+  border-radius: var(--prf-radius-lg);
+  box-shadow: var(--prf-shadow-sm);
+}
+.upload-left {
+  min-width: 0;
+}
+.uploader {
+  width: 100%;
+}
+.uploader :deep(.el-upload) {
+  width: 100%;
+}
+.uploader :deep(.el-upload-dragger) {
+  padding: 26px 20px;
+  background: var(--prf-surface-2);
+  border: 1px dashed var(--prf-border-strong);
+  border-radius: var(--prf-radius-md);
+}
+.uploader :deep(.el-upload-dragger:hover) {
+  border-color: var(--prf-primary);
+  background: var(--prf-active);
+}
+.upload-icon {
+  margin-bottom: 8px;
+  font-size: 34px;
+  color: var(--prf-text-4);
+}
+.uploader :deep(.el-upload__text) {
+  font-size: 13px;
+  color: var(--prf-text-3);
+}
+.uploader :deep(.el-upload__text em) {
+  font-style: normal;
+  font-weight: 550;
+  color: var(--prf-primary);
+}
+.uploader :deep(.el-upload__tip) {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--prf-text-4);
+}
+.upload-aside {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 4px 4px 0;
+}
+.upload-aside h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--prf-text-1);
+}
+.upload-aside p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--prf-text-3);
+}
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.upload-count {
+  font-size: 12px;
+  color: var(--prf-text-4);
+}
+
+/* ---------- 文档列表 ---------- */
+.table-panel {
+  background: var(--prf-surface);
+  border: 1px solid var(--prf-border);
+  border-radius: var(--prf-radius-lg);
+  overflow: hidden;
 }
 .table-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 12px;
+  padding: 16px 20px 10px;
 }
-.table-head h3 {
+.table-head h2 {
   margin: 0;
   font-size: 15px;
+  font-weight: 650;
   color: var(--prf-text-1);
-}
-.table-tools {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 .resize-hint {
   font-size: 12px;
   color: var(--prf-text-4);
 }
-.table-card :deep(.el-table) {
-  flex: 1;
+.table-panel :deep(.el-table) {
+  --el-table-border-color: var(--prf-border);
+  --el-table-tr-bg-color: var(--prf-surface);
+  --el-table-header-bg-color: var(--prf-surface-2);
+  --el-table-row-hover-bg-color: var(--prf-surface-2);
+  background: transparent;
+  font-size: 13px;
 }
-.action-btns {
-  /* 三个操作按钮强制单行，避免列宽不足时换行挤压 */
-  white-space: nowrap;
+/* 表头：小字距标签 + 细分隔线 */
+.table-panel :deep(th.el-table__cell) {
+  padding: 9px 0;
+  border-right: 1px solid var(--prf-border) !important;
+  border-bottom: 1px solid var(--prf-border) !important;
+  background: var(--prf-surface-2) !important;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--prf-text-4);
 }
-
-/* 无框式表格：只在表头行保留分隔线，便于识别列边界和拖拽位置；数据行保持无框 */
-.table-card :deep(.el-table td.el-table__cell) {
+.table-panel :deep(td.el-table__cell) {
+  padding: 10px 0;
   border-right: none !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid var(--prf-border) !important;
 }
-/* 表头行：只保留竖线（列边界/拖拽位置），不要底部横线；加粗 + 加深色让列边界更清晰 */
-.table-card :deep(.el-table th.el-table__cell) {
-  border-right: 2px solid var(--el-border-color) !important;
+.table-panel :deep(.el-table__row:last-child td.el-table__cell) {
   border-bottom: none !important;
 }
 /* 隐藏外框线（保留 border 属性只是为了启用列宽拖拽） */
-.table-card :deep(.el-table--border:before),
-.table-card :deep(.el-table--border:after),
-.table-card :deep(.el-table--border .el-table__inner-wrapper:after),
-.table-card :deep(.el-table__inner-wrapper:before) {
+.table-panel :deep(.el-table--border:before),
+.table-panel :deep(.el-table--border:after),
+.table-panel :deep(.el-table--border .el-table__inner-wrapper:after),
+.table-panel :deep(.el-table__inner-wrapper:before) {
   display: none;
 }
+.table-panel :deep(.el-table__empty-block) {
+  min-height: 180px;
+}
+.table-panel :deep(.el-table__empty-text) {
+  font-size: 13px;
+  color: var(--prf-text-4);
+}
+
+.file-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.file-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--prf-radius-xs);
+  background: var(--prf-primary-soft);
+  color: var(--prf-primary);
+  font-size: 14px;
+}
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--prf-text-1);
+}
+
+/* 状态胶囊 */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-pill.is-success {
+  color: color-mix(in srgb, var(--prf-success) 82%, var(--prf-text-1));
+  background: color-mix(in srgb, var(--prf-success) 13%, transparent);
+}
+.status-pill.is-warning {
+  color: color-mix(in srgb, var(--prf-warning) 74%, var(--prf-text-1));
+  background: color-mix(in srgb, var(--prf-warning) 15%, transparent);
+}
+.status-pill.is-danger {
+  color: var(--prf-danger);
+  background: var(--prf-danger-bg);
+}
+.status-pill.is-info {
+  color: var(--prf-text-3);
+  background: var(--prf-surface-2);
+}
+
+.action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.action-btns :deep(.el-button.is-link) {
+  height: auto;
+  padding: 4px 7px;
+  border-radius: var(--prf-radius-xs);
+  font-size: 13px;
+}
+.action-btns :deep(.el-button.is-link:hover) {
+  background: var(--prf-hover);
+}
+
 .hash-text {
+  font-family: var(--prf-font-mono);
   font-size: 12px;
   word-break: break-all;
 }
@@ -448,5 +708,25 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.7;
   color: var(--prf-text-3);
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 960px) {
+  .docs-inner {
+    width: 100%;
+  }
+  .docs-view {
+    padding: 22px 16px 28px;
+  }
+  .upload-panel {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .upload-aside {
+    padding: 0;
+  }
+  .page-heading h1 {
+    font-size: 24px;
+  }
 }
 </style>
