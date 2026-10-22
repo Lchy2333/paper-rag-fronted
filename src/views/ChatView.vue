@@ -524,8 +524,7 @@ async function handleApprove(approved: boolean, msg: ChatMessage) {
 }
 
 // ---------- 示例问题 ----------
-// 首页不再展示推荐问题，功能保留：
-// sampleQuestions / askSample 通过 defineExpose 暴露，后续需要时可重新接入 UI
+// 空会话欢迎页展示的建议问题，点按即发送
 const sampleQuestions = [
   '当前数据库中有哪些已向量化的文档？',
   '帮我检索关于 "retrieval augmented generation" 的论文片段',
@@ -632,11 +631,12 @@ onMounted(() => {
       <div v-if="messages.length === 0" class="chat-empty">
         <div class="chat-column chat-empty-column">
           <div class="chat-hero">
-            <div class="hero-icon">
-              <el-icon :size="30"><Reading /></el-icon>
-            </div>
-            <h2>论文 RAG 助手</h2>
-            <p>基于你的私有论文库提问，Agent 会检索相关片段并综合回答</p>
+            <span class="hero-eyebrow">
+              <span class="hero-dot"></span>
+              私有论文库 · RAG 检索
+            </span>
+            <h2>让论文里的细节<br />随问随答。</h2>
+            <p>基于你的私有论文库检索相关片段，再由 Agent 综合成有依据的回答。</p>
           </div>
           <p v-if="currentSessionId" class="hero-note">
             此会话历史保存在服务端，当前浏览器无本地缓存；继续提问将从服务端续接上下文
@@ -664,6 +664,14 @@ onMounted(() => {
               <el-icon v-if="sending" class="is-loading" :size="22"><Loading /></el-icon>
               <el-icon v-else :size="16"><Promotion /></el-icon>
             </el-button>
+          </div>
+
+          <!-- 示例问题：点按即问 -->
+          <div class="hero-samples">
+            <button v-for="q in sampleQuestions" :key="q" class="sample-chip" type="button" @click="askSample(q)">
+              <span class="sample-text">{{ q }}</span>
+              <el-icon class="sample-arrow" :size="13"><ArrowRight /></el-icon>
+            </button>
           </div>
         </div>
       </div>
@@ -819,7 +827,7 @@ onMounted(() => {
   border-right: none;
 }
 .session-head {
-  padding: 12px;
+  padding: 14px 12px 12px;
   border-bottom: 1px solid var(--prf-border);
 }
 .session-actions {
@@ -829,11 +837,15 @@ onMounted(() => {
 }
 .new-btn {
   flex: 1;
+  height: 36px;
+  border-radius: var(--prf-radius-sm);
 }
 .collapse-btn {
   flex-shrink: 0;
-  width: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
+  border-radius: var(--prf-radius-sm);
 }
 /* 拖拽调宽手柄 */
 .resize-handle {
@@ -861,17 +873,18 @@ onMounted(() => {
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 10px;
 }
 .session-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 4px;
-  border-radius: 10px;
+  gap: 9px;
+  padding: 10px 11px;
+  margin-bottom: 2px;
+  border-radius: var(--prf-radius-sm);
   cursor: pointer;
   color: var(--prf-text-2);
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 .session-item:hover {
   background: var(--prf-hover);
@@ -879,11 +892,12 @@ onMounted(() => {
 .session-item.active {
   background: var(--prf-active);
   color: var(--prf-primary);
-  font-weight: 500;
+  font-weight: 550;
 }
 .session-ico {
   flex-shrink: 0;
-  font-size: 16px;
+  font-size: 15px;
+  opacity: 0.75;
 }
 .session-title {
   flex: 1;
@@ -899,26 +913,29 @@ onMounted(() => {
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--prf-radius-xs);
   font-size: 15px;
   color: var(--prf-text-4);
   visibility: hidden;
 }
-.session-item:hover .session-more {
+.session-item:hover .session-more,
+.session-item.active .session-more {
   visibility: visible;
 }
 .session-more:hover {
   color: var(--prf-primary);
-  background: var(--prf-hover);
+  background: var(--prf-surface);
 }
 .session-group-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 12px 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--prf-text-3);
+  padding: 12px 11px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--prf-text-4);
 }
 .group-ico {
   font-size: 13px;
@@ -996,7 +1013,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 24px;
   /* 空会话整体略微上移，视觉更居中 */
   transform: translateY(-64px);
 }
@@ -1006,47 +1023,111 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  text-align: center;
   color: var(--prf-text-2);
+  animation: prf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.chat-hero .hero-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
-  background: var(--prf-primary-soft);
-  color: var(--prf-primary);
-  display: flex;
+.hero-eyebrow {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: var(--prf-shadow);
+  gap: 8px;
+  padding: 5px 12px 5px 10px;
+  border: 1px solid var(--prf-border);
+  border-radius: 999px;
+  background: var(--prf-surface);
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--prf-text-3);
+}
+.hero-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--prf-primary);
+  box-shadow: 0 0 0 3px var(--prf-primary-soft);
 }
 .chat-hero h2 {
-  margin: 8px 0 0;
-  font-size: 24px;
-  background: var(--prf-primary-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  margin: 4px 0 0;
+  font-size: 34px;
+  line-height: 1.24;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: var(--prf-text-1);
 }
 .chat-hero p {
   margin: 0;
+  max-width: 430px;
   font-size: 14px;
+  line-height: 1.75;
   color: var(--prf-text-3);
 }
 .hero-note {
-  margin: -16px 0 0;
+  margin: -12px 0 0;
   font-size: 12px;
   color: var(--prf-text-4);
+}
+
+/* 示例问题芯片 */
+.hero-samples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
+  animation: prf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+}
+.sample-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--prf-border);
+  border-radius: var(--prf-radius-md);
+  background: var(--prf-surface);
+  color: var(--prf-text-2);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+.sample-chip:hover {
+  color: var(--prf-text-1);
+  border-color: color-mix(in srgb, var(--prf-primary) 34%, var(--prf-border));
+  background: var(--prf-surface-2);
+  transform: translateX(2px);
+}
+.sample-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sample-arrow {
+  flex-shrink: 0;
+  color: var(--prf-text-4);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+.sample-chip:hover .sample-arrow {
+  color: var(--prf-primary);
+  transform: translateX(2px);
 }
 
 /* 中央输入框卡片 */
 .hero-input {
   position: relative;
   width: 100%;
-  max-width: 640px;
+  max-width: 560px;
   background: var(--prf-surface);
-  border: 1px solid var(--prf-border-strong);
-  border-radius: 16px;
+  border: 1px solid var(--prf-border);
+  border-radius: var(--prf-radius-xl);
   padding: 12px 14px;
   box-shadow: var(--prf-shadow);
   transition:
@@ -1056,7 +1137,7 @@ onMounted(() => {
 }
 .hero-input:focus-within {
   border-color: var(--prf-primary);
-  box-shadow: 0 0 0 3px var(--prf-primary-soft), var(--prf-shadow);
+  box-shadow: var(--prf-ring), var(--prf-shadow-lg);
 }
 .hero-input :deep(.el-textarea__inner) {
   background: transparent;
@@ -1089,18 +1170,18 @@ onMounted(() => {
 
 /* ---------- 消息流：上下流式块 ---------- */
 .msg-block {
-  margin-bottom: 28px;
+  margin-bottom: 30px;
+  animation: prf-fade-up 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 用户消息：右对齐浅色圆角块，宽度随内容自适应 */
+/* 用户消息：右对齐主色柔和底气泡 */
 .user-msg {
   width: fit-content;
   max-width: 78%;
   margin-left: auto;
-  padding: 10px 14px;
-  background: var(--prf-surface-2);
-  border: 1px solid var(--prf-border);
-  border-radius: 12px;
+  padding: 11px 15px;
+  background: var(--prf-primary-soft);
+  border-radius: 16px 16px 4px 16px;
   color: var(--prf-text-1);
   font-size: 15px;
   line-height: 1.7;
@@ -1119,8 +1200,9 @@ onMounted(() => {
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  background: var(--prf-primary-gradient);
-  color: #fff;
+  background: var(--prf-surface);
+  border: 1px solid var(--prf-border);
+  color: var(--prf-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1219,13 +1301,16 @@ onMounted(() => {
 /* 操作按钮：悬停显示 */
 .msg-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   margin-top: 10px;
   opacity: 0;
-  transition: opacity 0.2s;
+  transform: translateY(-2px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
-.msg-block.assistant:hover .msg-actions {
+.msg-block.assistant:hover .msg-actions,
+.msg-actions:focus-within {
   opacity: 1;
+  transform: translateY(0);
 }
 .action-btn {
   display: inline-flex;
@@ -1233,9 +1318,9 @@ onMounted(() => {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  border: 1px solid var(--prf-border);
-  background: var(--prf-surface);
+  border-radius: var(--prf-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--prf-text-3);
   cursor: pointer;
   font-size: 14px;
@@ -1246,8 +1331,8 @@ onMounted(() => {
 }
 .action-btn:hover {
   color: var(--prf-primary);
-  border-color: var(--prf-primary);
-  background: var(--prf-active);
+  border-color: var(--prf-border);
+  background: var(--prf-surface);
 }
 
 /* ---------- Markdown 渲染（正文排版） ---------- */
@@ -1266,10 +1351,11 @@ onMounted(() => {
 .msg-text.markdown-body :deep(h4),
 .msg-text.markdown-body :deep(h5),
 .msg-text.markdown-body :deep(h6) {
-  margin: 18px 0 10px;
-  font-size: 17px;
+  margin: 20px 0 10px;
+  font-size: 16px;
   line-height: 1.5;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 .msg-text.markdown-body :deep(h1) {
   font-size: 21px;
@@ -1299,9 +1385,10 @@ onMounted(() => {
   text-decoration: underline;
 }
 .msg-text.markdown-body :deep(blockquote) {
-  margin: 10px 0;
-  padding: 6px 14px;
-  border-left: 3px solid var(--prf-primary);
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-left: 2px solid var(--prf-primary);
+  border-radius: 0 var(--prf-radius-sm) var(--prf-radius-sm) 0;
   background: var(--prf-surface-2);
   color: var(--prf-text-2);
 }
@@ -1309,22 +1396,22 @@ onMounted(() => {
   margin: 4px 0;
 }
 .msg-text.markdown-body :deep(code) {
-  background: var(--prf-hover);
+  background: var(--prf-code-bg);
   padding: 1px 6px;
-  border-radius: 4px;
-  font-family: Consolas, Monaco, 'Courier New', monospace;
+  border-radius: var(--prf-radius-xs);
+  font-family: var(--prf-font-mono);
   font-size: 13px;
   color: var(--prf-code-text);
 }
 .msg-text.markdown-body :deep(pre) {
-  margin: 10px 0;
-  padding: 12px 14px;
+  margin: 12px 0;
+  padding: 14px 16px;
   background: var(--prf-code-bg);
   border: 1px solid var(--prf-border);
-  border-radius: 10px;
+  border-radius: var(--prf-radius-md);
   overflow-x: auto;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 .msg-text.markdown-body :deep(pre code) {
   background: transparent;
@@ -1365,10 +1452,10 @@ onMounted(() => {
 
 /* ---------- 审批卡 ---------- */
 .approval-card {
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 14px;
+  padding: 14px;
   border: 1px solid var(--prf-warning-border);
-  border-radius: 10px;
+  border-radius: var(--prf-radius-md);
   background: var(--prf-warning-bg);
   color: var(--prf-text-2);
 }
@@ -1380,9 +1467,20 @@ onMounted(() => {
 .approval-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--prf-text-1);
   margin-bottom: 8px;
+}
+.approval-title .el-icon {
+  color: var(--prf-warning);
+}
+.approval-card.resolved .approval-title {
+  color: var(--prf-text-3);
+}
+.approval-card.resolved .approval-title .el-icon {
+  color: var(--prf-text-4);
 }
 .approval-tool {
   font-size: 13px;
@@ -1413,8 +1511,8 @@ onMounted(() => {
 /* ---------- 底部输入栏 ---------- */
 .input-dock {
   flex-shrink: 0;
-  padding: 12px 24px 14px;
-  background: var(--prf-bg);
+  padding: 18px 24px 14px;
+  background: linear-gradient(to top, var(--prf-bg) 62%, color-mix(in srgb, var(--prf-bg) 0%, transparent));
 }
 .input-column {
   width: 100%;
@@ -1424,8 +1522,8 @@ onMounted(() => {
 .chat-input {
   position: relative;
   background: var(--prf-surface);
-  border: 1px solid var(--prf-border-strong);
-  border-radius: 16px;
+  border: 1px solid var(--prf-border);
+  border-radius: var(--prf-radius-xl);
   padding: 12px 14px;
   box-shadow: var(--prf-shadow);
   transition:
@@ -1435,7 +1533,7 @@ onMounted(() => {
 }
 .chat-input:focus-within {
   border-color: var(--prf-primary);
-  box-shadow: 0 0 0 3px var(--prf-primary-soft), var(--prf-shadow);
+  box-shadow: var(--prf-ring), var(--prf-shadow-lg);
 }
 .chat-input :deep(.el-textarea__inner) {
   background: transparent;
@@ -1472,6 +1570,37 @@ onMounted(() => {
   text-align: center;
   font-size: 12px;
   color: var(--prf-text-4);
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 900px) {
+  .chat-scroll {
+    padding: 24px 18px 16px;
+  }
+  .input-dock {
+    padding: 14px 16px 12px;
+  }
+  .chat-empty {
+    padding: 18px;
+  }
+  .chat-hero h2 {
+    font-size: 28px;
+  }
+}
+@media (max-width: 560px) {
+  .chat-hero h2 {
+    font-size: 25px;
+  }
+  .sample-chip {
+    padding: 10px 12px;
+    font-size: 12.5px;
+  }
+  .user-msg {
+    max-width: 88%;
+  }
+  .input-hint {
+    display: none;
+  }
 }
 </style>
 
