@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { approveOperation, cancelChat, deleteThread, listThreads, streamChat, updateThread } from '@/api/agent'
 import { ApiError } from '@/api/client'
-import type { ApprovalPayload, ThreadOut } from '@/api/types'
+import type { ApprovalPayload, ThreadOut, UsageSnapshot } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
 
 /** 会话条目（新建但未发送时 currentSessionId 为 null，不入列表）。
@@ -39,6 +39,8 @@ interface ChatMessage {
   approval?: ApprovalPayload | null
   /** 该审批是否已处理过 */
   approvalResolved?: boolean
+  /** 本次 query 的 token 用量快照（流式中逐轮更新，持久化随消息缓存） */
+  usage?: UsageSnapshot
 }
 
 // ---------- 会话列表 ----------
@@ -72,6 +74,8 @@ const input = ref('')
 const sending = ref(false)
 const approving = ref(false)
 const listEl = ref<HTMLElement | null>(null)
+/** 当前会话累计 token 消耗（SSE event: usage 实时更新，切换会话时重置） */
+const sessionTotal = ref(0)
 
 // 正在生成的请求句柄：用于"停止"（abort 断开 + 后端置取消标记）
 const abortController = ref<AbortController | null>(null)
@@ -169,6 +173,7 @@ function newSession() {
   currentSessionId.value = null
   messages.value = []
   input.value = ''
+  sessionTotal.value = 0
 }
 
 async function switchSession(id: string) {
@@ -176,6 +181,7 @@ async function switchSession(id: string) {
   if (currentSessionId.value) persistMessages()
   currentSessionId.value = id
   messages.value = loadMessages(id)
+  sessionTotal.value = 0 // 会话累计以服务端为准，下一次 usage 事件（含基线）会重新填
   scrollToBottom()
 }
 
@@ -359,6 +365,11 @@ async function requestReply(text: string, pendingMsg: ChatMessage) {
             pendingMsg.content += delta
             scrollToBottom()
           }
+        },
+        // token 用量：会话累计实时更新 + 记录本次 query 用量（全段展示）
+        onUsage(data) {
+          sessionTotal.value = Number(data.session_total ?? 0)
+          pendingMsg.usage = data
         },
         // HITL 挂起：展示审批卡
         onApproval(payload, tid) {
@@ -715,6 +726,11 @@ onMounted(() => {
                   ></div>
                   <div v-if="m.error && m.errorText" class="msg-error">{{ m.errorText }}</div>
 
+                  <!-- 本次 query 的 token 用量（流式中逐轮增长，全段可见） -->
+                  <div v-if="m.usage && m.usage.query_total > 0" class="msg-usage">
+                    本次消耗 {{ m.usage.query_total.toLocaleString() }} tokens · {{ m.usage.calls }} 次模型调用
+                  </div>
+
                   <!-- HITL 审批卡 -->
                   <div v-if="m.approval" class="approval-card" :class="{ resolved: m.approvalResolved }">
                     <div class="approval-title">
@@ -793,7 +809,12 @@ onMounted(() => {
                 <el-icon :size="16"><Promotion /></el-icon>
               </el-button>
             </div>
-            <p class="input-hint">内容由 AI 生成，仅供论文检索与研究参考</p>
+            <p class="input-hint">
+              <span>内容由 AI 生成，仅供论文检索与研究参考</span>
+              <span v-if="sessionTotal > 0" class="session-usage">
+                本会话已用 {{ sessionTotal.toLocaleString() }} tokens
+              </span>
+            </p>
           </div>
         </div>
       </template>
@@ -1243,6 +1264,14 @@ onMounted(() => {
   font-size: 10px;
 }
 
+/* 本次 query 的 token 用量 */
+.msg-usage {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--prf-text-4);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 流式阶段进度行：检索中 / 命中 N 条 等 */
 .msg-stages {
   display: flex;
@@ -1566,10 +1595,18 @@ onMounted(() => {
   color: #fff;
 }
 .input-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: 8px 0 0;
-  text-align: center;
   font-size: 12px;
   color: var(--prf-text-4);
+}
+.session-usage {
+  color: var(--prf-text-3);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 响应式 ---------- */

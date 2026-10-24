@@ -8,6 +8,7 @@ import type {
   ThreadOut,
   TokenResponse,
   UpdateThreadRequest,
+  UsageSnapshot,
   UserOut,
 } from './types'
 
@@ -66,6 +67,8 @@ export interface StreamChatHandlers {
   onStage: (data: Record<string, unknown>) => void
   /** 最终回答的 token 增量 */
   onToken: (delta: string) => void
+  /** token 用量快照（请求开始推基线，之后每轮 LLM 调用结束推一次） */
+  onUsage: (data: UsageSnapshot) => void
   /** 图挂起等待审批（HITL） */
   onApproval: (payload: ApprovalPayload | null, threadId: string) => void
   /** 用户主动停止（POST /chat/cancel 触发，或本地 abort 兜底） */
@@ -146,6 +149,7 @@ export async function streamChat(
           if (evt === 'session') handlers.onSession(String(data.thread_id ?? ''))
           else if (evt === 'stage') handlers.onStage(data)
           else if (evt === 'token') handlers.onToken(String(data.delta ?? ''))
+          else if (evt === 'usage') handlers.onUsage(data as unknown as UsageSnapshot)
           else if (evt === 'approval')
             handlers.onApproval((data.approval_payload as ApprovalPayload | null) ?? null, String(data.thread_id ?? ''))
           else if (evt === 'cancel') handlers.onCancel()
