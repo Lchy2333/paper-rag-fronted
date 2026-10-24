@@ -93,3 +93,24 @@ export interface DeleteThreadResponse {
   status: string
   thread_id: string
 }
+
+// ---------- token 用量（SSE event: usage） ----------
+
+/** SSE event: usage 载荷：单次 query 增量 + 会话累计（见 agent 仓 architecture.md §14.6） */
+export interface UsageSnapshot {
+  thread_id: string
+  /** 本次 query 已完成的 LLM 调用次数 */
+  calls: number
+  /** 本次 query 累计输入 tokens */
+  query_input: number
+  /** 本次 query 累计输出 tokens */
+  query_output: number
+  /** 本次 query 累计 = query_input + query_output */
+  query_total: number
+  /** 会话累计输入（含本次） */
+  session_input: number
+  /** 会话累计输出（含本次） */
+  session_output: number
+  /** 会话累计 = session_input + session_output */
+  session_total: number
+}
