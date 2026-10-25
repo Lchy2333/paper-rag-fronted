@@ -86,7 +86,7 @@ async function handleLogout() {
         <span class="brand-mark">
           <el-icon :size="17"><Reading /></el-icon>
         </span>
-        <span class="brand-name">论文 RAG 助手</span>
+        <span class="brand-name">Maclaosty</span>
       </div>
 
       <nav class="main-nav" aria-label="主导航">

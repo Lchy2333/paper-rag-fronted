@@ -44,7 +44,7 @@ router.beforeEach((to) => {
 
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined
-  document.title = title ? `${title} · 论文 RAG 助手` : '论文 RAG 助手'
+  document.title = title ? `${title} · Maclaosty` : 'Maclaosty'
 })
 
 export default router
