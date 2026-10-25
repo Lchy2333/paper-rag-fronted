@@ -33,6 +33,8 @@ interface ChatMessage {
   errorText?: string
   /** 流式过程中的阶段进度行（如"正在检索论文库…""命中 5 条"） */
   stages?: StageItem[]
+  /** 阶段面板是否展开（undefined = 跟随生成状态：生成中展开，结束后折叠） */
+  stagesOpen?: boolean
   /** 用户主动停止生成 */
   cancelled?: boolean
   /** HITL 待审批操作载荷（仅 assistant 消息可能有） */
@@ -182,7 +184,7 @@ async function switchSession(id: string) {
   currentSessionId.value = id
   messages.value = loadMessages(id)
   sessionTotal.value = 0 // 会话累计以服务端为准，下一次 usage 事件（含基线）会重新填
-  scrollToBottom()
+  scrollToBottom(true)
 }
 
 async function deleteSession(s: Session) {
@@ -278,7 +280,7 @@ const canSend = computed(() => {
 function pushMessage(m: ChatMessage): ChatMessage {
   messages.value.push(m)
   const proxy = messages.value[messages.value.length - 1]
-  scrollToBottom()
+  scrollToBottom(true)
   return proxy
 }
 
@@ -291,10 +293,21 @@ function findUnresolvedApproval(): ChatMessage | undefined {
   return undefined
 }
 
-function scrollToBottom() {
+/** 距底部阈值：在此范围内视为"贴底"，流式更新时自动跟随；用户上滑则暂停跟随 */
+const STICK_THRESHOLD = 140
+
+function scrollToBottom(force = false) {
   nextTick(() => {
-    if (listEl.value) {
-      listEl.value.scrollTop = listEl.value.scrollHeight
+    const el = listEl.value
+    if (!el) return
+    if (force) {
+      el.scrollTop = el.scrollHeight
+      return
+    }
+    // 流式逐字输出时：只有用户本就贴底才跟随滚动，否则不打断手动滑动
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (dist <= STICK_THRESHOLD) {
+      el.scrollTop = el.scrollHeight
     }
   })
 }
@@ -322,6 +335,17 @@ function markStagesDone(msg: ChatMessage) {
   if (msg.stages) {
     for (const s of msg.stages) s.done = true
   }
+}
+
+/** 阶段面板是否展开：用户手动设置优先，否则生成中展开、结束后折叠。 */
+function stagesOpen(m: ChatMessage): boolean {
+  if (m.stagesOpen !== undefined) return m.stagesOpen
+  return !!m.pending
+}
+
+/** 手动折叠/展开阶段面板。 */
+function toggleStages(m: ChatMessage) {
+  m.stagesOpen = !stagesOpen(m)
 }
 
 /** 向 Agent 请求一次回复并更新 pendingMsg（sendMessage 与 regenerate 共用）。
@@ -502,7 +526,7 @@ async function regenerate(m: ChatMessage) {
   messages.value.splice(idx, 1)
   messages.value.splice(idx, 0, { role: 'assistant', content: '', pending: true })
   const pendingMsg = messages.value[idx]
-  scrollToBottom()
+  scrollToBottom(true)
   await requestReply(userText, pendingMsg)
 }
 
@@ -549,7 +573,7 @@ function askSample(q: string) {
 
 defineExpose({ sampleQuestions, askSample })
 
-watch(messages, () => scrollToBottom(), { deep: false })
+watch(messages, () => scrollToBottom(true), { deep: false })
 
 onMounted(() => {
   syncSessions()
@@ -702,11 +726,23 @@ onMounted(() => {
                   <span class="assistant-label">Maclaosty</span>
                 </div>
 
-                <div v-if="m.stages && m.stages.length" class="msg-stages">
-                  <div v-for="(s, j) in m.stages" :key="j" class="msg-stage" :class="{ done: s.done }">
-                    <span v-if="s.done" class="stage-check">✓</span>
-                    <span v-else class="stage-dot"></span>
-                    <span>{{ s.label }}</span>
+                <div v-if="m.stages && m.stages.length" class="msg-stages" :class="{ open: stagesOpen(m) }">
+                  <button type="button" class="stages-toggle" @click="toggleStages(m)" :aria-expanded="stagesOpen(m)">
+                    <span class="stages-title">
+                      <el-icon :size="13"><Operation /></el-icon>
+                      检索过程
+                    </span>
+                    <span class="stages-summary">
+                      {{ m.pending ? '进行中…' : stagesOpen(m) ? '点击收起' : `已折叠 ${m.stages.length} 步，点击展开` }}
+                    </span>
+                    <el-icon :size="12" class="stages-arrow"><ArrowDown /></el-icon>
+                  </button>
+                  <div v-show="stagesOpen(m)" class="stages-list">
+                    <div v-for="(s, j) in m.stages" :key="j" class="msg-stage" :class="{ done: s.done }">
+                      <span v-if="s.done" class="stage-check">✓</span>
+                      <span v-else class="stage-dot"></span>
+                      <span>{{ s.label }}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -733,23 +769,29 @@ onMounted(() => {
 
                   <!-- HITL 审批卡 -->
                   <div v-if="m.approval" class="approval-card" :class="{ resolved: m.approvalResolved }">
-                    <div class="approval-title">
-                      <el-icon><WarningFilled /></el-icon>
-                      <span>{{ m.approvalResolved ? '审批已完成' : '需要审批的危险操作' }}</span>
+                    <div class="approval-head">
+                      <span class="approval-icon">
+                        <el-icon :size="17"><WarningFilled /></el-icon>
+                      </span>
+                      <div class="approval-head-copy">
+                        <span class="approval-title">{{ m.approvalResolved ? '审批已完成' : '需要审批的危险操作' }}</span>
+                        <span class="approval-sub">{{ m.approvalResolved ? '该操作已完成审批流程' : '该操作将改动你的私有数据，请确认后再放行' }}</span>
+                      </div>
                     </div>
-                    <div class="approval-tool">
-                      工具：<code>{{ m.approval.tool }}</code>
+                    <div class="approval-meta">
+                      <span class="approval-tool-label">调用工具</span>
+                      <code class="approval-tool">{{ m.approval.tool }}</code>
                     </div>
                     <pre v-if="m.approval.args" class="approval-args">{{ JSON.stringify(m.approval.args, null, 2) }}</pre>
                     <div v-if="!m.approvalResolved" class="approval-actions">
-                      <el-button type="danger" size="small" :loading="approving" @click="handleApprove(false, m)">
+                      <el-button type="danger" plain size="small" class="approval-btn danger" :loading="approving" @click="handleApprove(false, m)">
                         拒绝
                       </el-button>
-                      <el-button type="success" size="small" :loading="approving" @click="handleApprove(true, m)">
+                      <el-button type="success" size="small" class="approval-btn" :loading="approving" @click="handleApprove(true, m)">
                         允许
                       </el-button>
                     </div>
-                    <el-tag v-else size="small" type="info">已审批</el-tag>
+                    <el-tag v-else class="approval-done" size="small" type="info">已审批</el-tag>
                   </div>
 
                   <!-- 操作按钮：复制 / 重新生成 -->
@@ -1272,19 +1314,64 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* 流式阶段进度行：检索中 / 命中 N 条 等 */
+/* 流式阶段进度行：可手动折叠的面板 */
 .msg-stages {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   margin: 10px 0;
-  padding: 8px 10px;
+  padding: 4px 10px;
   background: var(--prf-surface-2);
   border: 1px solid var(--prf-border);
   border-radius: 8px;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--prf-text-3);
+}
+.stages-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--prf-text-3);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.stages-toggle:hover {
+  background: var(--prf-hover);
+}
+.stages-toggle:hover .stages-title {
+  color: var(--prf-text-1);
+}
+.stages-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--prf-text-2);
+}
+.stages-summary {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--prf-text-4);
+}
+.stages-arrow {
+  color: var(--prf-text-4);
+  transition: transform 0.2s ease;
+}
+.msg-stages.open .stages-arrow {
+  transform: rotate(180deg);
+}
+.stages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 0 6px;
+  border-top: 1px dashed var(--prf-border);
 }
 .msg-stage {
   display: flex;
@@ -1482,51 +1569,91 @@ onMounted(() => {
 /* ---------- 审批卡 ---------- */
 .approval-card {
   margin-top: 14px;
-  padding: 14px;
+  padding: 14px 16px;
   border: 1px solid var(--prf-warning-border);
+  border-left: 3px solid var(--prf-warning);
   border-radius: var(--prf-radius-md);
-  background: var(--prf-warning-bg);
+  background: linear-gradient(180deg, var(--prf-warning-bg), color-mix(in srgb, var(--prf-warning-bg) 88%, var(--prf-surface)));
   color: var(--prf-text-2);
+  box-shadow: var(--prf-shadow-sm);
 }
 .approval-card.resolved {
   border-color: var(--prf-border);
+  border-left-color: var(--prf-success);
   background: var(--prf-surface-2);
   color: var(--prf-text-3);
+  box-shadow: none;
 }
-.approval-title {
+.approval-head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13px;
+  gap: 11px;
+  margin-bottom: 12px;
+}
+.approval-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--prf-warning);
+  background: color-mix(in srgb, var(--prf-warning) 14%, transparent);
+}
+.approval-card.resolved .approval-icon {
+  color: var(--prf-success);
+  background: color-mix(in srgb, var(--prf-success) 13%, transparent);
+}
+.approval-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.approval-title {
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--prf-text-1);
-  margin-bottom: 8px;
 }
-.approval-title .el-icon {
-  color: var(--prf-warning);
-}
-.approval-card.resolved .approval-title {
+.approval-sub {
+  font-size: 12px;
   color: var(--prf-text-3);
 }
-.approval-card.resolved .approval-title .el-icon {
+.approval-card.resolved .approval-title {
+  color: var(--prf-text-2);
+}
+.approval-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.approval-tool-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--prf-text-4);
 }
 .approval-tool {
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-.approval-tool code {
-  background: var(--prf-hover);
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--prf-border);
+  border-radius: 999px;
+  background: var(--prf-surface);
+  font-family: var(--prf-font-mono);
   font-size: 12px;
+  color: var(--prf-text-1);
 }
 .approval-args {
-  margin: 0 0 10px;
-  padding: 8px 10px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--prf-border);
+  border-radius: 8px;
   background: var(--prf-surface);
-  border-radius: 6px;
+  font-family: var(--prf-font-mono);
   font-size: 12px;
+  line-height: 1.6;
   max-height: 160px;
   overflow: auto;
   color: var(--prf-text-2);
@@ -1535,6 +1662,14 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+.approval-btn {
+  min-width: 76px;
+  border-radius: var(--prf-radius-sm);
+  font-weight: 550;
+}
+.approval-done {
+  border-radius: 999px;
 }
 
 /* ---------- 底部输入栏 ---------- */

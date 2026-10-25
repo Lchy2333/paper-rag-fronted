@@ -346,29 +346,52 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 文档详情对话框 -->
-    <el-dialog v-model="detailVisible" :title="detailDoc?.filename" width="520px" v-loading="detailLoading">
+    <el-dialog v-model="detailVisible" :title="detailDoc?.filename" width="640px" v-loading="detailLoading">
       <template v-if="detailDoc">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusTag(detailDoc.status).type" size="small">
-              {{ statusTag(detailDoc.status).label }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="文档 ID">{{ detailDoc.id }}</el-descriptions-item>
-          <el-descriptions-item label="页数">{{ detailDoc.page_count }}</el-descriptions-item>
-          <el-descriptions-item label="分块数">{{ detailDoc.chunk_count }}</el-descriptions-item>
-          <el-descriptions-item label="大小">{{ formatSize(detailDoc.size_bytes) }}</el-descriptions-item>
-          <el-descriptions-item label="分块参数">
-            {{ detailDoc.chunk_size || '默认' }} / {{ detailDoc.chunk_overlap || '默认' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="创建时间" :span="2">{{ formatDate(detailDoc.created_at) }}</el-descriptions-item>
-          <el-descriptions-item v-if="detailDoc.content_hash" label="内容哈希" :span="2">
-            <code class="hash-text">{{ detailDoc.content_hash }}</code>
-          </el-descriptions-item>
-          <el-descriptions-item v-if="detailDoc.status === 'failed' && detailDoc.error" label="失败原因" :span="2">
-            <span class="error-text">{{ detailDoc.error }}</span>
-          </el-descriptions-item>
-        </el-descriptions>
+        <div class="detail-grid">
+          <div class="detail-row">
+            <span class="detail-label">状态</span>
+            <span class="detail-value">
+              <el-tag :type="statusTag(detailDoc.status).type" size="small">
+                {{ statusTag(detailDoc.status).label }}
+              </el-tag>
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">文档 ID</span>
+            <span class="detail-value mono-text">{{ detailDoc.id }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">页数</span>
+            <span class="detail-value">{{ detailDoc.page_count }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">分块数</span>
+            <span class="detail-value">{{ detailDoc.chunk_count }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">大小</span>
+            <span class="detail-value">{{ formatSize(detailDoc.size_bytes) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">分块参数</span>
+            <span class="detail-value">{{ detailDoc.chunk_size || '默认' }} / {{ detailDoc.chunk_overlap || '默认' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">创建时间</span>
+            <span class="detail-value">{{ formatDate(detailDoc.created_at) }}</span>
+          </div>
+          <div v-if="detailDoc.content_hash" class="detail-row">
+            <span class="detail-label">内容哈希</span>
+            <span class="detail-value">
+              <code class="hash-text">{{ detailDoc.content_hash }}</code>
+            </span>
+          </div>
+          <div v-if="detailDoc.status === 'failed' && detailDoc.error" class="detail-row">
+            <span class="detail-label">失败原因</span>
+            <span class="detail-value error-text">{{ detailDoc.error }}</span>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -702,6 +725,52 @@ onBeforeUnmount(() => {
 .error-text {
   color: var(--prf-danger);
   white-space: pre-wrap;
+}
+
+/* 文档详情弹窗：定义列表布局，避免长串内容在窄格中异常断行 */
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--prf-border);
+  border-radius: var(--prf-radius-md);
+  overflow: hidden;
+}
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 11px 14px;
+}
+.detail-row + .detail-row {
+  border-top: 1px solid var(--prf-border);
+}
+.detail-row:nth-child(odd) {
+  background: var(--prf-surface-2);
+}
+.detail-label {
+  flex-shrink: 0;
+  width: 76px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--prf-text-3);
+  padding-top: 2px;
+  white-space: nowrap;
+}
+.detail-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--prf-text-1);
+  word-break: break-all;
+}
+.detail-value .el-tag {
+  margin-top: -2px;
+}
+.mono-text {
+  font-family: var(--prf-font-mono);
+  font-size: 12.5px;
+  word-break: break-all;
 }
 .rechunk-tip {
   margin: 0 0 16px;
