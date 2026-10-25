@@ -84,7 +84,7 @@ async function submit() {
           <span class="brand-mark">
             <el-icon :size="17"><Reading /></el-icon>
           </span>
-          <span class="brand-name">论文 RAG 助手</span>
+          <span class="brand-name">Maclaosty</span>
         </div>
 
         <div class="brand-copy">
@@ -105,9 +105,9 @@ async function submit() {
       <!-- 表单面板 -->
       <section class="form-panel">
         <div class="form-head">
-          <span class="form-eyebrow">{{ mode === 'login' ? '欢迎回来' : '创建账号' }}</span>
-          <h2>{{ mode === 'login' ? '登录你的工作台' : '注册并开始使用' }}</h2>
-          <p>{{ mode === 'login' ? '继续你的论文问答与研究整理。' : '注册成功后将自动登录。' }}</p>
+          <span class="form-eyebrow">{{ mode === 'login' ? '欢迎回来' : '注册暂未开放' }}</span>
+          <h2>{{ mode === 'login' ? '登录你的工作台' : '暂未开放注册功能' }}</h2>
+          <p>{{ mode === 'login' ? '继续你的论文问答与研究整理。' : '如有需要请联系管理员开通账号。' }}</p>
         </div>
 
         <div class="mode-switch" role="tablist">
@@ -133,22 +133,27 @@ async function submit() {
           </button>
         </div>
 
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large" @keyup.enter="submit">
+        <!-- 注册暂未开放：展示提示，不渲染注册表单 -->
+        <div v-if="mode === 'register'" class="reg-closed">
+          <span class="reg-closed-mark">
+            <el-icon :size="18"><Lock /></el-icon>
+          </span>
+          <p class="reg-closed-text">当前暂未开放注册功能，如有需要请联系管理员</p>
+        </div>
+
+        <el-form v-else ref="formRef" :model="form" :rules="rules" label-position="top" size="large" @keyup.enter="submit">
           <el-form-item label="用户名" prop="username">
             <el-input v-model="form.username" placeholder="3-64 个字符" :prefix-icon="User" clearable />
           </el-form-item>
           <el-form-item label="密码" prop="password">
             <el-input v-model="form.password" type="password" placeholder="8-64 个字符" :prefix-icon="Lock" show-password />
           </el-form-item>
-          <el-form-item v-if="mode === 'register'" label="确认密码" prop="confirm">
-            <el-input v-model="form.confirm" type="password" placeholder="再次输入密码" :prefix-icon="Lock" show-password />
-          </el-form-item>
           <el-button type="primary" size="large" class="login-submit" :loading="loading" @click="submit">
-            {{ mode === 'login' ? '登 录' : '注册并登录' }}
+            登 录
           </el-button>
         </el-form>
 
-        <p class="login-hint">账号由管理员分配或自行注册</p>
+        <p class="login-hint">账号由管理员分配，暂不开放自行注册</p>
       </section>
     </div>
   </div>
@@ -228,8 +233,8 @@ async function submit() {
   color: #141721;
 }
 .brand-name {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 27px;
+  font-weight: 650;
   letter-spacing: 0.01em;
   color: rgba(255, 255, 255, 0.92);
 }
@@ -385,6 +390,35 @@ async function submit() {
   margin-top: 6px;
   font-size: 14px;
   letter-spacing: 0.04em;
+}
+
+.reg-closed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 30px 20px;
+  text-align: center;
+  background: var(--prf-surface-2);
+  border: 1px dashed var(--prf-border-strong);
+  border-radius: var(--prf-radius-md);
+}
+.reg-closed-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--prf-primary);
+  background: var(--prf-primary-soft);
+}
+.reg-closed-text {
+  margin: 0;
+  max-width: 26ch;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--prf-text-2);
 }
 
 .login-hint {

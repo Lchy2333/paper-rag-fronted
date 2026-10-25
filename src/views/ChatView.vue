@@ -699,7 +699,7 @@ onMounted(() => {
               <template v-else>
                 <div class="assistant-head">
                   <span class="assistant-icon"><el-icon :size="13"><Reading /></el-icon></span>
-                  <span class="assistant-label">论文 RAG 助手</span>
+                  <span class="assistant-label">Maclaosty</span>
                 </div>
 
                 <div v-if="m.stages && m.stages.length" class="msg-stages">
