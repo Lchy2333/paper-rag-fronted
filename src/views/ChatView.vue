@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveOperation, cancelChat, deleteThread, listThreads, streamChat, updateThread } from '@/api/agent'
+import { approveOperation, cancelChat, deleteThread, getThreadUsage, listThreads, streamChat, updateThread } from '@/api/agent'
 import { ApiError } from '@/api/client'
 import type { ApprovalPayload, ThreadOut, UsageSnapshot } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
@@ -78,6 +78,55 @@ const approving = ref(false)
 const listEl = ref<HTMLElement | null>(null)
 /** 当前会话累计 token 消耗（SSE event: usage 实时更新，切换会话时重置） */
 const sessionTotal = ref(0)
+/** 上下文占用（来自最近一次 usage 事件；ratio 为 null = 尚未调用模型/模型未知 → 隐藏指示器） */
+const contextRatio = ref<number | null>(null)
+const contextUsed = ref(0)
+const contextBudget = ref<number | null>(null)
+const contextWindow = ref<number | null>(null)
+
+/** 环形指示器几何：r=9 的圆周长，dashoffset 按比例留白 */
+const CTX_RING_RADIUS = 9
+const CTX_RING_LENGTH = 2 * Math.PI * CTX_RING_RADIUS
+const ctxRingOffset = computed(
+  () => CTX_RING_LENGTH * (1 - Math.min(Math.max(contextRatio.value ?? 0, 0), 1)),
+)
+const ctxPercent = computed(() => Math.round((contextRatio.value ?? 0) * 100))
+/** 60% 以下常规 / 60–85% 提醒 / 85% 以上警示 */
+const ctxTone = computed(() => {
+  const r = contextRatio.value ?? 0
+  if (r >= 0.85) return 'danger'
+  if (r >= 0.6) return 'warning'
+  return 'normal'
+})
+const ctxTip = computed(() => {
+  const used = contextUsed.value.toLocaleString()
+  const budget = (contextBudget.value ?? 0).toLocaleString()
+  const window = (contextWindow.value ?? 0).toLocaleString()
+  return `上下文占用 ${used} / ${budget} tokens（输入预算口径，模型窗口 ${window}）`
+})
+
+/** 切换/新建会话时把上下文指示器复位（等下一次 usage 事件重新填） */
+function resetContextMeter() {
+  contextRatio.value = null
+  contextUsed.value = 0
+  contextBudget.value = null
+  contextWindow.value = null
+}
+
+/** 切回历史会话时从服务端恢复累计用量与上下文水位（不必等下一次 LLM 调用） */
+async function loadThreadUsage(id: string) {
+  try {
+    const u = await getThreadUsage(id)
+    if (currentSessionId.value !== id) return // 竞态：请求返回前用户已切走
+    sessionTotal.value = u.session_total
+    contextUsed.value = u.context_used
+    contextBudget.value = u.context_budget
+    contextWindow.value = u.context_window
+    contextRatio.value = u.context_ratio
+  } catch {
+    /* 拉取失败保持隐藏，等下一次 usage 事件补 */
+  }
+}
 
 // 正在生成的请求句柄：用于"停止"（abort 断开 + 后端置取消标记）
 const abortController = ref<AbortController | null>(null)
@@ -176,6 +225,7 @@ function newSession() {
   messages.value = []
   input.value = ''
   sessionTotal.value = 0
+  resetContextMeter()
 }
 
 async function switchSession(id: string) {
@@ -183,8 +233,10 @@ async function switchSession(id: string) {
   if (currentSessionId.value) persistMessages()
   currentSessionId.value = id
   messages.value = loadMessages(id)
-  sessionTotal.value = 0 // 会话累计以服务端为准，下一次 usage 事件（含基线）会重新填
+  sessionTotal.value = 0 // 会话累计以服务端为准，先拉 /usage 恢复，下一次 usage 事件再实时覆盖
+  resetContextMeter()
   scrollToBottom(true)
+  void loadThreadUsage(id)
 }
 
 async function deleteSession(s: Session) {
@@ -390,10 +442,14 @@ async function requestReply(text: string, pendingMsg: ChatMessage) {
             scrollToBottom()
           }
         },
-        // token 用量：会话累计实时更新 + 记录本次 query 用量（全段展示）
+        // token 用量：会话累计实时更新 + 记录本次 query 用量（全段展示）+ 上下文占用
         onUsage(data) {
           sessionTotal.value = Number(data.session_total ?? 0)
           pendingMsg.usage = data
+          contextRatio.value = data.context_ratio ?? null
+          contextUsed.value = Number(data.context_used ?? 0)
+          contextBudget.value = data.context_budget ?? null
+          contextWindow.value = data.context_window ?? null
         },
         // HITL 挂起：展示审批卡
         onApproval(payload, tid) {
@@ -853,8 +909,30 @@ onMounted(() => {
             </div>
             <p class="input-hint">
               <span>内容由 AI 生成，仅供论文检索与研究参考</span>
-              <span v-if="sessionTotal > 0" class="session-usage">
-                本会话已用 {{ sessionTotal.toLocaleString() }} tokens
+              <span class="hint-right">
+                <span v-if="sessionTotal > 0" class="session-usage">
+                  本会话已用 {{ sessionTotal.toLocaleString() }} tokens
+                </span>
+                <!-- 上下文占用：环形进度 + 百分比（分母为输入预算口径） -->
+                <span
+                  v-if="contextRatio !== null"
+                  class="ctx-meter"
+                  :class="ctxTone"
+                  :title="ctxTip"
+                >
+                  <svg class="ctx-ring" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle class="ctx-track" cx="12" cy="12" :r="CTX_RING_RADIUS" />
+                    <circle
+                      class="ctx-bar"
+                      cx="12"
+                      cy="12"
+                      :r="CTX_RING_RADIUS"
+                      :stroke-dasharray="CTX_RING_LENGTH"
+                      :stroke-dashoffset="ctxRingOffset"
+                    />
+                  </svg>
+                  <span class="ctx-label">{{ ctxPercent }}%</span>
+                </span>
               </span>
             </p>
           </div>
@@ -1742,6 +1820,59 @@ onMounted(() => {
   color: var(--prf-text-3);
   font-weight: 550;
   font-variant-numeric: tabular-nums;
+}
+.hint-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+/* 上下文占用环形指示器：16px 圆环 + 百分比 */
+.ctx-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--prf-text-3);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+  transition: color 0.25s ease;
+}
+.ctx-ring {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  /* 起点旋转到 12 点钟方向 */
+  transform: rotate(-90deg);
+}
+.ctx-track,
+.ctx-bar {
+  fill: none;
+  stroke-width: 3;
+}
+.ctx-track {
+  stroke: var(--prf-border);
+}
+.ctx-bar {
+  stroke: var(--prf-primary);
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 0.4s ease,
+    stroke 0.25s ease;
+}
+.ctx-meter.warning {
+  color: var(--prf-warning);
+}
+.ctx-meter.warning .ctx-bar {
+  stroke: var(--prf-warning);
+}
+.ctx-meter.danger {
+  color: var(--prf-danger);
+}
+.ctx-meter.danger .ctx-bar {
+  stroke: var(--prf-danger);
+}
+.ctx-label {
+  font-weight: 550;
 }
 
 /* ---------- 响应式 ---------- */

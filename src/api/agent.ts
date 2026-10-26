@@ -6,6 +6,7 @@ import type {
   ChatResponse,
   DeleteThreadResponse,
   ThreadOut,
+  ThreadUsage,
   TokenResponse,
   UpdateThreadRequest,
   UsageSnapshot,
@@ -206,6 +207,18 @@ export async function updateThread(threadId: string, patch: UpdateThreadRequest)
     return data
   } catch (e) {
     return handleError(e, '更新会话失败')
+  }
+}
+
+/** 会话用量 + 上下文占用（GET /threads/:id/usage）。切换会话时恢复底部指示器。 */
+export async function getThreadUsage(threadId: string): Promise<ThreadUsage> {
+  try {
+    const { data } = await agentClient.get<ThreadUsage>(
+      `/threads/${encodeURIComponent(threadId)}/usage`,
+    )
+    return data
+  } catch (e) {
+    return handleError(e, '获取会话用量失败')
   }
 }
 

@@ -96,6 +96,7 @@ src/
 | `POST /api/chat/cancel` | `cancelChat()`（**停止生成**，与停止按钮/AbortController 配合） |
 | `POST /api/approve` | `approveOperation()` |
 | `GET /api/threads` | `listThreads()` |
+| `GET /api/threads/:id/usage` | `getThreadUsage()`（切换会话时恢复用量 + 上下文环） |
 | `PATCH /api/threads/:id` | `updateThread()` |
 | `DELETE /api/threads/:id` | `deleteThread()` |
 | `GET /health` | `checkAgentHealth()`（分层健康检查，含 db/rag/llm 状态） |
@@ -115,7 +116,8 @@ src/
 ## 已知边界 / 后续方向
 
 - **流式输出 ✅ 已接入（2026-10）**：对话页走 `/api/chat/stream`（`fetch` + `ReadableStream` 逐事件解析）——阶段进度行（进行中闪烁点 / 完成变绿色对号）+ 逐字打字机 + 红色停止按钮（`/api/chat/cancel` + 3s 兜底 abort）。已修复两个关键坑：① `pushMessage` 必须返回 Vue 响应式代理（否则流式回调改原始对象不触发重绘，内容一次性出现）；② `nginx.conf` `/api/` 需关 `proxy_buffering`（否则 SSE 被缓冲、失去逐字效果）。
-- **Token 用量展示 ✅ 已接入（2026-10）**：消费 `event: usage`——每条回复下方显示"本次消耗 X tokens · N 次模型调用"（`query_total` / `calls`），底部输入栏右侧显示"本会话已用 X tokens"（`session_total`，流式中逐轮增长）。切换会话时重置，会话累计以服务端 `query_usage` 表为准。
+- **Token 用量展示 ✅ 已接入（2026-10）**：消费 `event: usage`——每条回复下方显示"本次消耗 X tokens · N 次模型调用"（`query_total` / `calls`），底部输入栏右侧显示"本会话已用 X tokens"（`session_total`，流式中逐轮增长）。切换会话时以服务端 `GET /api/threads/:id/usage` 为准恢复（`query_usage` 表累计）。
+- **上下文占用指示器 ✅ 已接入（2026-10）**：底部输入栏右侧的 16px 环形进度 + 百分比（`ctx-meter`），数据来自 `event: usage` 的 `context_ratio`（= `context_used` 最近一轮 input / `context_budget` 输入预算）。配色三档：<60% 常规主色 / 60–85% `--prf-warning` / >85% `--prf-danger`；悬停 `title` 显示 `已用 / 预算（输入预算口径，模型窗口 X）`。`context_ratio` 为 `null`（未调用模型或预算未知）时不渲染；切换会话时调 `GET /api/threads/:id/usage` 恢复（`last_input_tokens` 水位已落库，带 `currentSessionId` 竞态守卫，拉取失败则保持隐藏、等下一次 usage 事件覆盖）；新建会话复位。
 - Agent 未提供"读取会话历史消息"的端点：切换会话时消息内容取本地缓存（`localStorage`），换浏览器/清缓存后仅显示"服务端续接"提示，但继续提问仍会正确续接服务端上下文。
 - 文档删除已改为经 Agent 转发 + `audit_logs` 留痕（前端确认框 + Agent 审计）；Chat 场景删除仍走 Agent 的 HITL 审批。
 - `/api/v1/ask` 为 RAG 内部测试接口（仅管理员、全局检索），前端不暴露、也不经 Agent 转发。

@@ -94,6 +94,22 @@ export interface DeleteThreadResponse {
   thread_id: string
 }
 
+/** GET /api/threads/:id/usage 响应体：会话累计 + 上下文占用（切换会话时恢复展示） */
+export interface ThreadUsage {
+  thread_id: string
+  session_input: number
+  session_output: number
+  session_total: number
+  /** 模型上下文窗口；null = 未知 */
+  context_window: number | null
+  /** 输入预算（占用率分母）；null = 未知 */
+  context_budget: number | null
+  /** 最近一次 query 的最后一轮 input_tokens（当前水位） */
+  context_used: number
+  /** context_used / context_budget；null = 尚未调用过模型 */
+  context_ratio: number | null
+}
+
 // ---------- token 用量（SSE event: usage） ----------
 
 /** SSE event: usage 载荷：单次 query 增量 + 会话累计（见 agent 仓 architecture.md §14.6） */
@@ -113,4 +129,12 @@ export interface UsageSnapshot {
   session_output: number
   /** 会话累计 = session_input + session_output */
   session_total: number
+  /** 模型上下文窗口（tokens）；null = 未配置/未知，前端隐藏指示器 */
+  context_window: number | null
+  /** 上下文占用率的分母：输入预算 = 窗口 − 输出预留 − 安全余量（见 agent 仓 core/model_limits.py） */
+  context_budget: number | null
+  /** 上下文已占用：最后一轮 LLM 的 input_tokens（每轮完整重发，取最新即当前水位） */
+  context_used: number
+  /** context_used / context_budget；null = 本次尚未调用模型，占用未知 */
+  context_ratio: number | null
 }
