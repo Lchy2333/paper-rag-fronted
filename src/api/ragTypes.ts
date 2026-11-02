@@ -90,25 +90,6 @@ export interface SearchResponse {
   latency_ms: number
 }
 
-/** POST /api/v1/connections/test 请求体 */
-export interface ConnectionTestRequest {
-  /** embedding / chat / formula */
-  kind: 'embedding' | 'chat' | 'formula'
-  base_url: string
-  api_key?: string
-  model: string
-}
-
-/** POST /api/v1/connections/test 响应体 */
-export interface ConnectionResult {
-  ok: boolean
-  kind: string
-  latency_ms: number
-  /** chat 测试时模型的回复 */
-  reply?: string
-  error?: string
-}
-
 /** POST /api/v1/ask 请求体（仅管理员可用，全局检索） */
 export interface AskRequest {
   query: string
