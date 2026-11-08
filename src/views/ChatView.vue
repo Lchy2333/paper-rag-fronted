@@ -365,6 +365,9 @@ function scrollToBottom(force = false) {
 }
 
 function registerSession(threadId: string) {
+  // 幂等：wasNew 是请求开始时的快照，session / approval / done 事件都会据此重复触发注册，
+  // 已在列表中则跳过，避免同一会话在侧边栏出现两条
+  if (sessions.value.some((x) => x.id === threadId)) return
   const title = (messages.value[0]?.content || '新会话').slice(0, 24)
   sessions.value.unshift({ id: threadId, title, updatedAt: Date.now() })
   // 新会话服务端标题默认为空，用首条消息同步标题（失败不影响本地展示）
