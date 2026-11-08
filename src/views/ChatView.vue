@@ -321,9 +321,13 @@ function handleMenu(command: string | number | object, s: Session) {
 }
 
 // ---------- 发送 / 响应 ----------
+/** 当前会话是否存在未处理的审批卡：消息随 localStorage 持久化，
+ *  刷新后切回会话仍能恢复该状态 → 输入框保持锁定，直到用户完成审批 */
+const hasPendingApproval = computed(() => !!findUnresolvedApproval())
+
 const canSend = computed(() => {
   const text = input.value.trim()
-  return text.length > 0 && !sending.value && !approving.value
+  return text.length > 0 && !sending.value && !approving.value && !hasPendingApproval.value
 })
 
 /** 把消息推进响应式数组，返回 Vue 的响应式代理对象。
@@ -566,7 +570,7 @@ function copyMessage(m: ChatMessage) {
 }
 
 async function regenerate(m: ChatMessage) {
-  if (m.pending || sending.value || approving.value) return
+  if (m.pending || sending.value || approving.value || hasPendingApproval.value) return
   const idx = messages.value.indexOf(m)
   if (idx < 0) return
   // 找到该回复之前最近的一条用户消息，作为重新生成的问题
@@ -875,12 +879,13 @@ onMounted(() => {
         <!-- 底部输入栏：固定于页面底部，居中同一栏宽 -->
         <div class="input-dock">
           <div class="input-column">
-            <div class="chat-input">
+            <div class="chat-input" :class="{ locked: hasPendingApproval }">
               <el-input
                 v-model="input"
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 8 }"
-                placeholder="向你的论文库提问…（Enter 发送，Shift + Enter 换行）"
+                :disabled="hasPendingApproval"
+                :placeholder="hasPendingApproval ? '当前会话正在等待审批，请先完成上方的审批操作后再继续提问' : '向你的论文库提问…（Enter 发送，Shift + Enter 换行）'"
                 resize="none"
                 class="chat-textarea"
                 @keydown.enter.exact.prevent="sendMessage"
@@ -1779,6 +1784,11 @@ onMounted(() => {
 .chat-input:focus-within {
   border-color: var(--prf-primary);
   box-shadow: var(--prf-ring), var(--prf-shadow-lg);
+}
+/* 审批挂起：输入锁定（与审批卡同色系，提示用户先完成审批） */
+.chat-input.locked {
+  border-color: var(--prf-warning-border);
+  background: var(--prf-warning-bg);
 }
 .chat-input :deep(.el-textarea__inner) {
   background: transparent;
