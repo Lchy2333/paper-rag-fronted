@@ -53,7 +53,7 @@ async function refreshHealth() {
 
 onMounted(() => {
   refreshHealth()
-  timer = window.setInterval(refreshHealth, 5000)
+  timer = window.setInterval(refreshHealth, 30000)
 })
 
 onBeforeUnmount(() => {
