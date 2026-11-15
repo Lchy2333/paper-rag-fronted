@@ -1801,6 +1801,17 @@ onMounted(() => {
 .chat-input :deep(.el-textarea__inner:focus) {
   box-shadow: none !important;
 }
+/* Chromium 142 下 el-textarea 的 placeholder 被渲染为近整内容区高并垂直居中，
+   与 caret/输入文字（始终在第一行）错位约半行：点击 placeholder 上方时
+   光标出现在文字左上侧。显式把 placeholder 钉到 padding 内侧第一行即可对齐。
+   top/left 需与上方 .el-textarea__inner 的 padding: 4px 52px 4px 2px 保持一致。 */
+.hero-input :deep(.el-textarea__inner)::placeholder,
+.chat-input :deep(.el-textarea__inner)::placeholder {
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  max-width: calc(100% - 54px); /* 约束在左右 padding 内，避免压到右侧发送按钮 */
+}
 .chat-send {
   position: absolute;
   right: 12px;
