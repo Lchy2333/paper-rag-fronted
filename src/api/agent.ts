@@ -222,6 +222,19 @@ export async function getThreadUsage(threadId: string): Promise<ThreadUsage> {
   }
 }
 
+/** 从服务端 checkpoint 恢复可见消息和待审批状态。 */
+export async function getThreadMessages(threadId: string): Promise<{
+  thread_id: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string; approval?: ApprovalPayload | null }>
+}> {
+  try {
+    const { data } = await agentClient.get(`/threads/${encodeURIComponent(threadId)}/messages`)
+    return data
+  } catch (e) {
+    return handleError(e, '获取会话历史失败')
+  }
+}
+
 /** 删除会话（连带服务端对话快照 checkpoints）。 */
 export async function deleteThread(threadId: string): Promise<void> {
   try {
