@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveOperation, cancelChat, deleteThread, getThreadUsage, listThreads, streamChat, updateThread } from '@/api/agent'
+import { approveOperation, cancelChat, deleteThread, getThreadMessages, getThreadUsage, listThreads, streamChat, updateThread } from '@/api/agent'
 import { ApiError } from '@/api/client'
 import type { ApprovalPayload, ThreadOut, UsageSnapshot } from '@/api/types'
 import { renderMarkdown } from '@/utils/markdown'
@@ -75,6 +75,8 @@ const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const sending = ref(false)
 const approving = ref(false)
+const loadingHistory = ref(false)
+let historyRequest = 0
 const listEl = ref<HTMLElement | null>(null)
 /** 当前会话累计 token 消耗（SSE event: usage 实时更新，切换会话时重置） */
 const sessionTotal = ref(0)
@@ -215,11 +217,15 @@ function loadMessages(id: string): ChatMessage[] {
 }
 function persistMessages() {
   if (currentSessionId.value) {
-    localStorage.setItem(msgKey(currentSessionId.value), JSON.stringify(messages.value))
+    try {
+      localStorage.setItem(msgKey(currentSessionId.value), JSON.stringify(messages.value))
+    } catch { /* 缓存不可用时仍允许切换会话 */ }
   }
 }
 
 function newSession() {
+  historyRequest++
+  loadingHistory.value = false
   if (currentSessionId.value) persistMessages()
   currentSessionId.value = null
   messages.value = []
@@ -229,6 +235,7 @@ function newSession() {
 }
 
 async function switchSession(id: string) {
+  if (sending.value || approving.value) return
   if (currentSessionId.value === id) return
   if (currentSessionId.value) persistMessages()
   currentSessionId.value = id
@@ -237,6 +244,21 @@ async function switchSession(id: string) {
   resetContextMeter()
   scrollToBottom(true)
   void loadThreadUsage(id)
+  const request = ++historyRequest
+  loadingHistory.value = true
+  try {
+    const result = await getThreadMessages(id)
+    if (request !== historyRequest || currentSessionId.value !== id) return
+    messages.value = result.messages
+    persistMessages()
+    scrollToBottom(true)
+  } catch (e) {
+    if (request === historyRequest && currentSessionId.value === id) {
+      ElMessage.error((e as ApiError).message)
+    }
+  } finally {
+    if (request === historyRequest) loadingHistory.value = false
+  }
 }
 
 async function deleteSession(s: Session) {
@@ -327,7 +349,7 @@ const hasPendingApproval = computed(() => !!findUnresolvedApproval())
 
 const canSend = computed(() => {
   const text = input.value.trim()
-  return text.length > 0 && !sending.value && !approving.value && !hasPendingApproval.value
+  return text.length > 0 && !sending.value && !approving.value && !loadingHistory.value && !hasPendingApproval.value
 })
 
 /** 把消息推进响应式数组，返回 Vue 的响应式代理对象。
@@ -737,7 +759,7 @@ onMounted(() => {
             <p>基于你的私有论文库检索相关片段，再由 Agent 综合成有依据的回答。</p>
           </div>
           <p v-if="currentSessionId" class="hero-note">
-            此会话历史保存在服务端，当前浏览器无本地缓存；继续提问将从服务端续接上下文
+            {{ loadingHistory ? '正在加载会话历史…' : '当前没有可显示的历史消息' }}
           </p>
 
           <!-- 中央输入框 -->
