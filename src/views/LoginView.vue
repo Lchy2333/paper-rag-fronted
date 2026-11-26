@@ -81,9 +81,7 @@ async function submit() {
       <!-- 品牌面板：桌面端左侧，移动端隐藏 -->
       <aside class="brand-panel">
         <div class="brand-top">
-          <span class="brand-mark">
-            <el-icon :size="17"><Reading /></el-icon>
-          </span>
+          <img src="/favicon.svg" width="32" height="32" alt="" />
           <span class="brand-name">Maclaosty</span>
         </div>
 
@@ -221,16 +219,6 @@ async function submit() {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  color: #141721;
 }
 .brand-name {
   font-size: 27px;

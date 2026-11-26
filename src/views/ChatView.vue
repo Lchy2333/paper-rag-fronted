@@ -807,7 +807,7 @@ onMounted(() => {
               <!-- AI 回复：正文式排版 -->
               <template v-else>
                 <div class="assistant-head">
-                  <span class="assistant-icon"><el-icon :size="13"><Reading /></el-icon></span>
+                  <img src="/favicon.svg" width="22" height="22" alt="" />
                   <span class="assistant-label">Maclaosty</span>
                 </div>
 
@@ -1185,6 +1185,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 24px;
+  max-width: 640px;
   /* 空会话整体略微上移，视觉更居中 */
   transform: translateY(-64px);
 }
@@ -1195,6 +1196,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 14px;
+  width: 100%;
   text-align: center;
   color: var(--prf-text-2);
   animation: prf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -1230,9 +1232,9 @@ onMounted(() => {
 }
 .chat-hero p {
   margin: 0;
-  max-width: 430px;
   font-size: 14px;
   line-height: 1.75;
+  text-wrap: balance;
   color: var(--prf-text-3);
 }
 .hero-note {
@@ -1247,7 +1249,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  max-width: 560px;
   animation: prf-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
 }
 .sample-chip {
@@ -1295,11 +1296,10 @@ onMounted(() => {
 .hero-input {
   position: relative;
   width: 100%;
-  max-width: 560px;
   background: var(--prf-surface);
   border: 1px solid var(--prf-border);
   border-radius: var(--prf-radius-xl);
-  padding: 12px 14px;
+  padding: 0;
   box-shadow: var(--prf-shadow);
   transition:
     border-color 0.25s ease,
@@ -1314,7 +1314,7 @@ onMounted(() => {
   background: transparent;
   border: none;
   box-shadow: none !important;
-  padding: 4px 52px 4px 2px;
+  padding: 16px 66px 16px 16px;
   font-size: 15px;
   line-height: 1.6;
 }
@@ -1366,17 +1366,6 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-}
-.assistant-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: var(--prf-surface);
-  border: 1px solid var(--prf-border);
-  color: var(--prf-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 .assistant-label {
   font-size: 13px;
@@ -1796,7 +1785,7 @@ onMounted(() => {
   background: var(--prf-surface);
   border: 1px solid var(--prf-border);
   border-radius: var(--prf-radius-xl);
-  padding: 12px 14px;
+  padding: 0;
   box-shadow: var(--prf-shadow);
   transition:
     border-color 0.25s ease,
@@ -1816,23 +1805,34 @@ onMounted(() => {
   background: transparent;
   border: none;
   box-shadow: none !important;
-  padding: 4px 52px 4px 2px;
+  padding: 16px 66px 16px 16px;
   font-size: 15px;
   line-height: 1.6;
 }
 .chat-input :deep(.el-textarea__inner:focus) {
   box-shadow: none !important;
 }
+/* 留白由 textarea 自身承载，让圆角框内的空白也能直接获得输入焦点。
+   block 消除 Element Plus inline-block 包装器的基线空隙。 */
+.hero-textarea,
+.chat-textarea {
+  display: block;
+  border-radius: inherit;
+}
+.hero-input :deep(.el-textarea__inner),
+.chat-input :deep(.el-textarea__inner) {
+  border-radius: inherit;
+}
 /* Chromium 142 下 el-textarea 的 placeholder 被渲染为近整内容区高并垂直居中，
    与 caret/输入文字（始终在第一行）错位约半行：点击 placeholder 上方时
    光标出现在文字左上侧。显式把 placeholder 钉到 padding 内侧第一行即可对齐。
-   top/left 需与上方 .el-textarea__inner 的 padding: 4px 52px 4px 2px 保持一致。 */
+   top/left 需与上方 .el-textarea__inner 的 padding 保持一致。 */
 .hero-input :deep(.el-textarea__inner)::placeholder,
 .chat-input :deep(.el-textarea__inner)::placeholder {
   position: absolute;
-  top: 4px;
-  left: 2px;
-  max-width: calc(100% - 54px); /* 约束在左右 padding 内，避免压到右侧发送按钮 */
+  top: 16px;
+  left: 16px;
+  max-width: calc(100% - 82px); /* 约束在左右 padding 内，避免压到右侧发送按钮 */
 }
 .chat-send {
   position: absolute;
