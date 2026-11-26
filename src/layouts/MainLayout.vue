@@ -83,9 +83,7 @@ async function handleLogout() {
   <div class="main-layout">
     <header class="main-header">
       <div class="brand">
-        <span class="brand-mark">
-          <el-icon :size="17"><Reading /></el-icon>
-        </span>
+        <img src="/favicon.svg" width="30" height="30" alt="" />
         <span class="brand-name">Maclaosty</span>
       </div>
 
@@ -198,19 +196,6 @@ async function handleLogout() {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-}
-.brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: var(--prf-primary);
-  color: #fff;
-  box-shadow:
-    0 2px 6px color-mix(in srgb, var(--prf-primary) 32%, transparent),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 .brand-name {
   font-size: 15px;
