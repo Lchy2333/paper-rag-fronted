@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
-import type { UploadUserFile } from 'element-plus'
+import type { UploadHooks, UploadInstance, UploadRawFile, UploadUserFile } from 'element-plus'
 import { deleteDocument, getDocument, listDocuments, rechunkDocument, uploadDocuments } from '@/api/rag'
 import { ApiError } from '@/api/client'
 import type { RagDocument } from '@/api/ragTypes'
@@ -9,6 +9,8 @@ import type { RagDocument } from '@/api/ragTypes'
 const docs = ref<RagDocument[]>([])
 const loading = ref(false)
 const uploading = ref(false)
+const maxUploadFiles = 20
+const uploadRef = ref<UploadInstance>()
 const uploadList = ref<UploadUserFile[]>([])
 const tableRef = ref<TableInstance>()
 
@@ -121,6 +123,14 @@ async function submitRechunk() {
 }
 
 // ---------- 上传 ----------
+const handleUploadExceed: UploadHooks['onExceed'] = (files, selectedFiles) => {
+  const remaining = Math.max(0, maxUploadFiles - selectedFiles.length)
+  for (const file of files.slice(0, remaining)) {
+    uploadRef.value?.handleStart(file as UploadRawFile)
+  }
+  ElMessage.warning(`单次上传最多 ${maxUploadFiles} 篇 PDF，超出的文件未加入上传列表`)
+}
+
 async function doUpload() {
   // el-upload 的 raw 是 UploadRawFile（File 的子类型），直接传给后端
   const files: File[] = []
@@ -240,20 +250,22 @@ onBeforeUnmount(() => {
       <section class="upload-panel">
         <div class="upload-left">
           <el-upload
+            ref="uploadRef"
             v-model:file-list="uploadList"
             class="uploader"
             drag
             multiple
             :auto-upload="false"
             accept=".pdf"
-            :limit="20"
+            :limit="maxUploadFiles"
+            :on-exceed="handleUploadExceed"
           >
             <el-icon class="upload-icon"><UploadFilled /></el-icon>
             <div class="el-upload__text">
               拖拽 PDF 到此处，或<em>点击选择文件</em>
             </div>
             <template #tip>
-              <div class="el-upload__tip">支持多文件上传，仅限 PDF；上传后异步解析与向量化</div>
+              <div class="el-upload__tip">单次最多上传 {{ maxUploadFiles }} 篇 PDF，上传后异步解析与向量化</div>
             </template>
           </el-upload>
         </div>
