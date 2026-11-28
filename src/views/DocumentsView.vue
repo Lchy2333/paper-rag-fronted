@@ -13,6 +13,21 @@ const maxUploadFiles = 20
 const uploadRef = ref<UploadInstance>()
 const uploadList = ref<UploadUserFile[]>([])
 const tableRef = ref<TableInstance>()
+const filenameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+const statusSortOrder = new Map(['pending', 'processing', 'ready', 'failed'].map((status, index) => [status, index]))
+
+function compareFilenames(a: RagDocument, b: RagDocument) {
+  return filenameCollator.compare(a.filename, b.filename)
+}
+
+function sortByStatus(doc: RagDocument) {
+  return statusSortOrder.get(doc.status) ?? statusSortOrder.size
+}
+
+function sortByCreatedAt(doc: RagDocument) {
+  const timestamp = Date.parse(doc.created_at)
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp
+}
 
 // ---------- 详情 / 重分块对话框 ----------
 const detailDoc = ref<RagDocument | null>(null)
@@ -293,7 +308,7 @@ onBeforeUnmount(() => {
       <section class="table-panel">
         <div class="table-head">
           <h2>全部文档</h2>
-          <span class="resize-hint">拖拽表头可调整列宽</span>
+          <span class="table-hint">点击表头排序 · 拖拽列边缘调整列宽</span>
         </div>
 
         <el-table
@@ -305,7 +320,7 @@ onBeforeUnmount(() => {
           allow-drag-last-column
           @header-dragend="onHeaderDragEnd"
         >
-          <el-table-column label="文件名" prop="filename" min-width="240">
+          <el-table-column label="文件名" prop="filename" min-width="240" sortable :sort-method="compareFilenames">
             <template #default="{ row }">
               <span class="file-cell" :title="row.filename">
                 <span class="file-badge"><el-icon><Document /></el-icon></span>
@@ -313,7 +328,7 @@ onBeforeUnmount(() => {
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" min-width="100" align="center">
+          <el-table-column label="状态" prop="status" min-width="100" align="center" sortable :sort-by="sortByStatus">
             <template #default="{ row }">
               <el-tooltip v-if="row.status === 'failed' && row.error" :content="row.error" placement="top">
                 <span class="status-pill" :class="`is-${statusTag(row.status).type}`">
@@ -327,12 +342,20 @@ onBeforeUnmount(() => {
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="页数" prop="page_count" min-width="70" align="center" />
-          <el-table-column label="分块" prop="chunk_count" min-width="70" align="center" />
-          <el-table-column label="大小" min-width="100" align="center">
+          <el-table-column label="页数" prop="page_count" min-width="70" align="center" sortable />
+          <el-table-column label="分块" prop="chunk_count" min-width="70" align="center" sortable />
+          <el-table-column label="大小" prop="size_bytes" min-width="100" align="center" sortable>
             <template #default="{ row }">{{ formatSize(row.size_bytes) }}</template>
           </el-table-column>
-          <el-table-column label="创建时间" min-width="160" align="center" show-overflow-tooltip>
+          <el-table-column
+            label="创建时间"
+            prop="created_at"
+            min-width="160"
+            align="center"
+            show-overflow-tooltip
+            sortable
+            :sort-by="sortByCreatedAt"
+          >
             <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
           </el-table-column>
           <el-table-column label="操作" width="260" min-width="260" align="center" fixed="right">
@@ -607,7 +630,7 @@ onBeforeUnmount(() => {
   font-weight: 650;
   color: var(--prf-text-1);
 }
-.resize-hint {
+.table-hint {
   font-size: 12px;
   color: var(--prf-text-4);
 }
